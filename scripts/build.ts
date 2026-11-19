@@ -3,10 +3,12 @@ import { isDeepStrictEqual } from 'node:util'
 import { mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { addBalance, titleWords } from '../bench/scores/balance.mjs'
 import { fieldScores } from '../bench/scores/field.mjs'
-import { json, publicOrigin, rawRecordOrigin, readJson, recordOrigin, sha256 } from './vault.ts'
+import { json, mediaKey, publicOrigin, rawRecordOrigin, readJson, recordOrigin, sha256, vaultTarget } from './vault.ts'
 import type {
   Analysis, Features, FieldScores, Measurements, Metadata, Signals, Timeline, VaultDetail, VaultEntry, VaultIndex,
 } from './types.ts'
+
+const target = vaultTarget(process.env.VAULT_BRANCH)
 
 function readRecord(slug: string) {
   const path = 'pieces/' + slug
@@ -61,9 +63,9 @@ function build() {
     return {
       schemaVersion: 1 as const, slug, metadata, measurements, analysis, timeline,
       scores: scores as VaultDetail['scores'],
-      recordUrl: recordOrigin + '/' + slug,
-      moduleUrl: rawRecordOrigin + '/' + slug + '/piece.js',
-      replyUrl: rawRecordOrigin + '/' + slug + '/reply.txt',
+      recordUrl: recordOrigin.replace('/main/', '/' + target.branch + '/') + '/' + slug,
+      moduleUrl: rawRecordOrigin.replace('/main/', '/' + target.branch + '/') + '/' + slug + '/piece.js',
+      replyUrl: rawRecordOrigin.replace('/main/', '/' + target.branch + '/') + '/' + slug + '/reply.txt',
     }
   })
 
@@ -74,8 +76,8 @@ function build() {
     modelName: metadata.model.replace(/^(GPT-[\d.]+)-([A-Za-z]+)$/, '$1 $2'),
     lab: scores.lab,
     effort: metadata.effort ?? null,
-    clipUrl: publicOrigin + '/pieces/' + slug + '/clip.mp4',
-    posterUrl: publicOrigin + '/pieces/' + slug + '/poster.jpg',
+    clipUrl: publicOrigin + '/' + mediaKey('pieces/' + slug + '/clip.mp4', target),
+    posterUrl: publicOrigin + '/' + mediaKey('pieces/' + slug + '/poster.jpg', target),
     withdrawn: false as const,
     measurements: {
       wall: scores.timeSeconds,
@@ -103,7 +105,7 @@ function build() {
   const index: VaultIndex = {
     schemaVersion, revision, titleWordCounts,
     pieces: pieces.map(piece => ({
-      ...piece, detailUrl: publicOrigin + '/derived/' + revision + '/' + piece.slug + '/detail.json',
+      ...piece, detailUrl: publicOrigin + '/' + target.prefix + 'derived/' + revision + '/' + piece.slug + '/detail.json',
     })),
   }
   const files = new Map<string, string>()

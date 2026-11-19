@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process'
 import { lstatSync, readFileSync, readdirSync } from 'node:fs'
 import {
-  commonFiles, immutableCache, mediaTypes, publicOrigin, readJson, recordFiles, sha256, slugPattern,
+  commonFiles, immutableCache, mediaKey, mediaTypes, publicOrigin, readJson, recordFiles, sha256, slugPattern,
+  vaultTarget,
 } from './vault.ts'
 import type { Manifest } from './vault.ts'
 import type { Metadata } from './types.ts'
@@ -23,6 +24,7 @@ function checkManifest(manifest: Manifest) {
     for (const name of recordFiles) files.add(root + name)
     for (const [name, type] of Object.entries(mediaTypes)) {
       const path = root + name
+      mediaKey(path)
       media.add(path)
       const item = manifest.media[path]
       if (!item || item.contentType !== type || item.cacheControl !== immutableCache ||
@@ -55,6 +57,14 @@ function checkBase(manifest: Manifest, revision: string) {
   const base = JSON.parse(execFileSync('git', ['show', revision + ':manifest.json'], {
     encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
   })) as Manifest
+  const target = vaultTarget(process.env.VAULT_BRANCH)
+  if (target.prefix) {
+    for (const path of Object.keys(manifest.media)) {
+      if (!base.media[path] && mediaKey(path, target) === path) {
+        throw new Error('Staging may add only Workshop fixture media: ' + path)
+      }
+    }
+  }
   for (const [path, digest] of Object.entries(base.files)) {
     if (manifest.files[path] !== digest) throw new Error('Changed permanent file manifest entry: ' + path)
   }
@@ -78,7 +88,7 @@ if (process.argv.includes('--remote')) {
   const media = Object.entries(manifest.media)
   for (let start = 0; start < media.length; start += 8) {
     await Promise.all(media.slice(start, start + 8).map(async ([path, item]) => {
-      const response = await fetch(publicOrigin + '/' + path, {
+      const response = await fetch(publicOrigin + '/' + mediaKey(path), {
         redirect: 'error', signal: AbortSignal.timeout(45_000),
       })
       if (response.status !== 200) throw new Error('HTTP ' + response.status + ': ' + path)

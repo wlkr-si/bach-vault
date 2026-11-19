@@ -1,17 +1,21 @@
 name: Publish Vault index
 on:
   push:
-    branches: [main]
+    branches: [main, 'workshop-staging-*']
+    paths: [manifest.json, withdrawn.json]
 
 permissions:
   contents: read
 
 concurrency:
-  group: publish-vault-index
+  group: publish-vault-index-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   publish:
+    if: ${{ !github.event.created && !github.event.deleted }}
+    env:
+      VAULT_BRANCH: ${{ github.ref_name }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:

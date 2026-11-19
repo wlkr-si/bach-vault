@@ -31,9 +31,10 @@ Use Node 24 or later. With dependencies installed using `npm ci`, run
 `npm run lint`. `npm run build` writes the index and details to `dist/`.
 Set `BASE_REVISION` to the base commit to check the manifest is append-only.
 Add `-- --remote` to the integrity command to verify public media bytes and
-headers. The same checks gate PRs. Only a push to main publishes the derived
-files, with details uploaded before their index. The workflow uses a
-bucket-scoped R2 credential stored in Actions secrets.
+headers. The same checks gate PRs. Manifest and withdrawal changes on main
+publish production details and the index. Changes on Workshop staging
+branches publish to their own storage prefix. Details upload before their
+index. The workflow uses a bucket-scoped R2 credential stored in Actions secrets.
 
 The [capture notes](docs/REPRODUCIBILITY.md) describe the model run and recorder.
 The [scoring method](docs/METHOD.md) documents the existing formulas. Each
