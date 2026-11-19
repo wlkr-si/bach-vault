@@ -1,0 +1,58 @@
+{
+  "wallSeconds": {
+    "value": 317.714,
+    "source": "tool-result"
+  },
+  "toolReportedDurationSeconds": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "inputTokens": {
+    "value": 220,
+    "source": "tool-result"
+  },
+  "outputTokens": {
+    "value": 41950,
+    "source": "tool-result"
+  },
+  "reasoningTokens": {
+    "value": 15198,
+    "source": "tool-result"
+  },
+  "cachedReadTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "cachedWriteTokens": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "reportedCostUsd": {
+    "value": 0.62991,
+    "source": "tool-result"
+  },
+  "reportedModelId": {
+    "value": "gemini-4-neon",
+    "source": "tool-result"
+  },
+  "requestedModelId": {
+    "value": "gemini-4-neon",
+    "source": "tool-result"
+  },
+  "tool": {
+    "value": "OpenCode Console",
+    "source": "tool-result"
+  },
+  "toolVersion": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "effort": {
+    "value": "high",
+    "source": "tool-result"
+  },
+  "effortSetting": {
+    "value": "high",
+    "source": "tool-result"
+  }
+}

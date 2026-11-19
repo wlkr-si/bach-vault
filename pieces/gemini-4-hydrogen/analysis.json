@@ -1,0 +1,26 @@
+{
+  "replyCharacters": 44736,
+  "moduleLines": 1273,
+  "moduleCharacters": 44719,
+  "drawingMethods": [
+    "2D canvas"
+  ],
+  "audioNodeCallSites": {
+    "Gain": 26,
+    "DynamicsCompressor": 1,
+    "Analyser": 1,
+    "Convolver": 1,
+    "BiquadFilter": 11,
+    "Delay": 2,
+    "StereoPanner": 3,
+    "BufferSource": 3,
+    "Oscillator": 14
+  },
+  "integratedLoudnessLufs": -15.8,
+  "truePeakDbfs": -4.7,
+  "silentFraction": 0.011003382157123836,
+  "recordedVideoFrames": 450,
+  "distinctVideoFrames": 450,
+  "channelRange": 0,
+  "clipSeconds": 15.02
+}

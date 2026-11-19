@@ -1,0 +1,709 @@
+{
+  "schemaVersion": 1,
+  "files": {
+    "bench/instruction.md": "18ecf370598c85276dd4376988e38d838f91c0b7e3498ae7289c03095ff4360a",
+    "bench/record.mjs": "dc22bffce32b4ed31f3306347885646b75134df9fed98f5148a6eb20e2b68d14",
+    "pieces/claude-fable-5-2/analysis.json": "9fa0557cdd1675ee720f00b0ead92ea567ea3408880cf57081a8667421edf555",
+    "pieces/claude-fable-5-2/meta.json": "922b32eac1c5dbee84b6bdc11c42701ba66de223865a297d2a720296a4875126",
+    "pieces/claude-fable-5-2/piece.js": "68d23b5934604a68831aac275c1afcc1d910544c9fc3ab224b3a4cefd681da42",
+    "pieces/claude-fable-5-2/reply.txt": "958e4ec418be3c4693cbc0f58ef4aeb257915027ebb575305e368a8ebb14d043",
+    "pieces/claude-fable-5-2/run.json": "19a358f9ca91ee598afec118e69614754b01edd946c826a2d457ff349d66423d",
+    "pieces/claude-fable-5-2/signals.json": "5305cf73df1c329c163a4d6c52c741ff28a284b3842c65a0dbecde7b7053d066",
+    "pieces/claude-haiku-5-5/analysis.json": "b5b2566d9029f964a81c99f4e7e4585babfd6d7e75199e81520be2cd38a53ba0",
+    "pieces/claude-haiku-5-5/meta.json": "01d20f2c6798cbc0052b077b4152b0b716c63b07b5fef020b40fd43879f5d702",
+    "pieces/claude-haiku-5-5/piece.js": "9b1a42ac842093aa8ead8e40bd2cd6aac7f4e2d205864926c3f299d131f01c30",
+    "pieces/claude-haiku-5-5/reply.txt": "0a166cf8cb4741ad60a0aa0cb036a7138cb3bea530cf848c1688f78337fdff65",
+    "pieces/claude-haiku-5-5/run.json": "6162a5218a43d33b79447d8e8d876d62854a4b24a9bc6d9d6fa1eda5ab8281b2",
+    "pieces/claude-haiku-5-5/signals.json": "5658edc64cfabf5008791f0a5c7ae4f2618eaca9d52a0e79dbb49d57e3cc0237",
+    "pieces/claude-opus-4-8/analysis.json": "80b53e5ddbbdb9c09ec2546e158c8ac19bfdf17fc24c34e45274975483293cf2",
+    "pieces/claude-opus-4-8/meta.json": "328743b206592673c157e50619ace08f421960f296714223ba53595607575aea",
+    "pieces/claude-opus-4-8/piece.js": "1485d2f6126a7b5e70641c9aa916de6d7d875276682bb796b2890c2258762295",
+    "pieces/claude-opus-4-8/reply.txt": "084d688875c9cff233cca8465d9fffa54bb50f30769d774b2b4ae50a8da3288e",
+    "pieces/claude-opus-4-8/run.json": "58dd9f16ed4272105db25ce7ca6f50b78f3f74a766c545fa1dc89c966d5c710c",
+    "pieces/claude-opus-4-8/signals.json": "62af582d6b3af0ea023280710e04a80ae7ad9e51a20ef11c57a0f11c01173ac1",
+    "pieces/claude-opus-5-5/analysis.json": "ecf22e8572f2591a641dd79474411da72d239ab6ef64a6052258f9b7e5eb0531",
+    "pieces/claude-opus-5-5/meta.json": "064b0126e2a11b7765c5d0ccb04bd41c9d426e2803486eda5a7e140d103f7593",
+    "pieces/claude-opus-5-5/piece.js": "758faae87c5ae8fd3866e7cae822f4250065a20321aa01e5dfc0b8f4cd8a0f03",
+    "pieces/claude-opus-5-5/reply.txt": "d392ffb6698c5e7133e8dba8f12d595646305c80955ad40d223ef0f1e44907f5",
+    "pieces/claude-opus-5-5/run.json": "9feda9fd979a9759aad9d74b5b3ddd1e0ff62de61a65b42d576e0d138a15d499",
+    "pieces/claude-opus-5-5/signals.json": "c871970c06e1f4fd605885808c10cc25b25577e371dc474128eccb734fac95cb",
+    "pieces/claude-sonnet-4-6/analysis.json": "1727adcfbeed2a611d0a2c6feb28c742c61b7be18d2897683fc0d01569daa7a4",
+    "pieces/claude-sonnet-4-6/meta.json": "0a4047e6588659f36cff99a8886e7b7306f3981c321f42ba0df50bcb6b458456",
+    "pieces/claude-sonnet-4-6/piece.js": "f2ce3e61c21263da9d2dd591dad2089c1a1b708e2322229f18419dd0b1a1eea2",
+    "pieces/claude-sonnet-4-6/reply.txt": "7722756176cd7b3f974c5beabb69d4295a256f1fc9a86422a5d51c6f44474c82",
+    "pieces/claude-sonnet-4-6/run.json": "0c262eef332f55a338666c7c223518afd84f6b20c19d9c83cfac948bba4dc2e2",
+    "pieces/claude-sonnet-4-6/signals.json": "96e473b1ab1d34fa91647580e78ec938abcfb89e1cac244392ca20a61de63d3d",
+    "pieces/claude-sonnet-5-5/analysis.json": "9c68886c6468d99bd608f92659889d29843d5c0bfc5c55158979ea6b479aea27",
+    "pieces/claude-sonnet-5-5/meta.json": "dfbee5ca6fe47ddf103b84b3176914d4bc83e453214550a8f72c96e38e323814",
+    "pieces/claude-sonnet-5-5/piece.js": "e9cea9c2a59ce8ffe67040d7df6e346a1ef54e7e78700074c05c193797e0fa82",
+    "pieces/claude-sonnet-5-5/reply.txt": "ec777e2fdf84c32bc2536302a5fe8201b39f6c142f6c87b0694b5d6c0e6c31fe",
+    "pieces/claude-sonnet-5-5/run.json": "b3c5f23bf522747757025a15fa27fe49a2fe93955f42de3edf76d0ce6bea4225",
+    "pieces/claude-sonnet-5-5/signals.json": "9f34ae28b2e309c888047f8c00b4d65f077f5103daa0a52d99c4fe64b869206c",
+    "pieces/composer-2.5/analysis.json": "e073b39d444742ecbe53a6dc27eae903c5681ac3f79bce782f2c3aea00c62885",
+    "pieces/composer-2.5/meta.json": "212df0a376dc7446625136eb9a94458269c2d2b35c36e0b6cda9c85f49ba8cfa",
+    "pieces/composer-2.5/piece.js": "aa4871fd6fed6728ce83dc6fb31531202dd3e5eafa32637812f18abc88a3816f",
+    "pieces/composer-2.5/reply.txt": "c0699dde8b5862fc1189b9cb5e14fe8beeaed50cd8be862a6a70838bf6b2a048",
+    "pieces/composer-2.5/run.json": "58e8366f28f5ebcaafbefd7776c1bfe3231b6cd5efd14b35605f15ded98930f9",
+    "pieces/composer-2.5/signals.json": "56598c6bf636f818f047d58a29884504fd222fd39b104a6076526dcb9ba63a08",
+    "pieces/deepseek-v4-pro/analysis.json": "a962bc87787376af3013900b2d6e5aff677c6324575a008d9f6221435d20d4f3",
+    "pieces/deepseek-v4-pro/meta.json": "29ccd935fab389c1861f3be8cbcdad04201f7481026450eb97090f12e9a53035",
+    "pieces/deepseek-v4-pro/piece.js": "caa1ef543a0e46fc7ad90678b5a909d7317da0b566fa43d48f91c7833e965ff8",
+    "pieces/deepseek-v4-pro/reply.txt": "31dd6920645739903c7227c4f38aa30bc13b87e5787b52d2aa55426e1a838584",
+    "pieces/deepseek-v4-pro/run.json": "5066f376a6706bb7d82a510122e80a6a750b6b644303139d14140ac06dd85515",
+    "pieces/deepseek-v4-pro/signals.json": "f27b679812e7a2c0a6fab20f8605022f34263593afafba097f41bd79d73ca8df",
+    "pieces/deepseek-v4.1-flash/analysis.json": "9c6509d0afed4ddb2281dd09dab4191639e0084d514b8603f69d6772b1dabe7e",
+    "pieces/deepseek-v4.1-flash/meta.json": "2f251a8d6df579ab3a24e825ff0a08474e02189557f125bbdcd71b1b58edaf5d",
+    "pieces/deepseek-v4.1-flash/piece.js": "8915ffa5794411c89dec2475292a2d8960949bb7071ce031f5dce88ed5c32ac5",
+    "pieces/deepseek-v4.1-flash/reply.txt": "4dd0bf26d5f80c58237ee76a22e01f723c38f8a7c7e89cbd5de3a366e3e037bf",
+    "pieces/deepseek-v4.1-flash/run.json": "4a2fae5f4eda7501cc349ce78955a39cb95afad6028ff21999302710d6940210",
+    "pieces/deepseek-v4.1-flash/signals.json": "d26ff749375b118f5584f2a5043cf8a4abc4426a4ede7d9f704a1d7a94d85578",
+    "pieces/gemini-3.8-flash/analysis.json": "0802f6d98a30ff67f704affa1ab887d8eb072d6ec0a0153488a78a3328fb4602",
+    "pieces/gemini-3.8-flash/meta.json": "2d8c4951ae678fb28e41aa3b33c470807a19fdb94b23cf8e946c74ad6ce22e16",
+    "pieces/gemini-3.8-flash/piece.js": "d4e9b5d608e8d7ec881c987bd440e53363697d62a40f1112adb8cb66b0b9a00a",
+    "pieces/gemini-3.8-flash/reply.txt": "ec5aa619674be98d780ec2a44877bc0a8c77cfad3dab7a01c5a989aef85053bb",
+    "pieces/gemini-3.8-flash/run.json": "1b27c0b785075507ad8f6d214797899e31553c8490b648dea4ad89dcd603ecb4",
+    "pieces/gemini-3.8-flash/signals.json": "5604c2733229b892607f78b96afa95e65b27973f04a1582f921a10e12a6d21d1",
+    "pieces/gemini-4-argon/analysis.json": "87184e0343cd94a282524ee884c296c204c4c717708a764cd28a725ba8433fdd",
+    "pieces/gemini-4-argon/meta.json": "1dbaf2742c8c583a230fe022040c1539c8561f0969154f872ad954bb6f504862",
+    "pieces/gemini-4-argon/piece.js": "21bbf571010c1d80694e22b4332f6be03619a342b04e13f686dc814f7aa9dbfe",
+    "pieces/gemini-4-argon/reply.txt": "21bbf571010c1d80694e22b4332f6be03619a342b04e13f686dc814f7aa9dbfe",
+    "pieces/gemini-4-argon/run.json": "2663c5426df238ddbc9ed56a29ee206f0447944a4963465708d5ebd0b741710c",
+    "pieces/gemini-4-argon/signals.json": "5dce6fa12fb4127ae1c5d487c50298b227880125ff2932e3d6924486197fe27d",
+    "pieces/gemini-4-carbon/analysis.json": "5e2d7250c7868ed92c3802b23785fadfa9ab607b61ef6f1e1670c218888a7b2b",
+    "pieces/gemini-4-carbon/meta.json": "0303f05ee28a113cea6aaa1f71f4707b938a060bf93c09df1bfe05f2e76147ea",
+    "pieces/gemini-4-carbon/piece.js": "d218646c98edceb14dcda90bc1ffe7c48e2bb0cce1fc6f683f559c58f2e4a621",
+    "pieces/gemini-4-carbon/reply.txt": "977c2d91bd2696cd1ac0e0f0fa677db53d8ccf96170ea1a90cdfb25ccc4c16b9",
+    "pieces/gemini-4-carbon/run.json": "119e62453c37efcee81673e6e491b018a6a35462a3a0923e63d9ea9db755bc62",
+    "pieces/gemini-4-carbon/signals.json": "d82bbe9a271bf3a18b2cc2847db716d96a867326ae61ebe8f1d707bb0f4ead92",
+    "pieces/gemini-4-hydrogen/analysis.json": "3bdec5d57c5b2753084db06c45c978745bcbb2bb9e6d90760d21ea35f38acccf",
+    "pieces/gemini-4-hydrogen/meta.json": "be02d4575c77815cfa8547e8ad814fb6f873d627b06ad08f26169b291066670e",
+    "pieces/gemini-4-hydrogen/piece.js": "6ccfd5df30674ee83301680603d6c3bad9d4d793e523af30c870154cb1c2532a",
+    "pieces/gemini-4-hydrogen/reply.txt": "e6972cc92c0e2ccd243a0dd4007b447ba05c3065928a6db16377b16bf3af6807",
+    "pieces/gemini-4-hydrogen/run.json": "6eaa07d9b5cd3db4c96b3c5e91e9c53aad89267499f0b45080659b140b725b7a",
+    "pieces/gemini-4-hydrogen/signals.json": "4c5b779017a2c1ef538a6cb87a209d47bced1ca14e5c7d9fd78226c467385abc",
+    "pieces/gemini-4-neon/analysis.json": "668d6ca5461429fe57720a01ad50a24c8f7edbb99ef395df841df36cb4b064b7",
+    "pieces/gemini-4-neon/meta.json": "6f8fb02d8e6c85572f017ca6755a1663de3aab90367103783af67e8410694e20",
+    "pieces/gemini-4-neon/piece.js": "7f6687606b46a5eed0c2e7953303b5cd44dd67f23714a93ddb560379704a52f4",
+    "pieces/gemini-4-neon/reply.txt": "052396d8e649ce4c2d433cd35a86459bb629128c55950a8e90ac5ad23250da6e",
+    "pieces/gemini-4-neon/run.json": "63af09f9111b073147a8426e4c46ef0caa60660cad1aa939f2a67354f22c9a42",
+    "pieces/gemini-4-neon/signals.json": "1c74e8c3920c83afb18cf5756f97ff148d283bb68fb1100fdce423c170617031",
+    "pieces/glm-5.3/analysis.json": "690bd2b542b018b7221a1aed944411637350e44e4716cdd25da680fc4e6ea31b",
+    "pieces/glm-5.3/meta.json": "c4d8689f3b7a5fd28abffd4d10e0cc52ea36d6d49b382691c280581b6cd5028e",
+    "pieces/glm-5.3/piece.js": "591ffdec143b35dd487c1311623a1ad90f36d957014c6bb884210b94c82e6fca",
+    "pieces/glm-5.3/reply.txt": "6c4dd1ea965759fc12b1418ecefb87b56eb94a4c036b60784bbbec4267744bd8",
+    "pieces/glm-5.3/run.json": "dd76f149ddc62e68bdb805c92638163d92db5f87eb80cee6d16689e2952d4a94",
+    "pieces/glm-5.3/signals.json": "67707845c6db2893006768ca0cac7fbd4c8074ec2cb05cd4f1cb520697192e30",
+    "pieces/gpt-5.3-codex/analysis.json": "e77dd42e205c2fd8765c13280e74fe2b2a00866bbbab1ec1ceaa6deb651f84ad",
+    "pieces/gpt-5.3-codex/meta.json": "b0edcb6c0d9961e3f86f771d2993612cc4a6855c0f58b421b34c3ee9320b4370",
+    "pieces/gpt-5.3-codex/piece.js": "3e2ce153143ddd0acf8d721a258b39bc901a3dbc1ac00bcac400360dd0b4760f",
+    "pieces/gpt-5.3-codex/reply.txt": "91754f86a36caa59008d67d6c555952b55f004c5fc8013917c8c0b7acaf019c3",
+    "pieces/gpt-5.3-codex/run.json": "cfcc8289ed1cee2108b4ef2035d604144dbbcec97b43c9a485a2d42c7132157a",
+    "pieces/gpt-5.3-codex/signals.json": "d57a8f09deda283cab9cb4b1e5adb1a117d448e1745e1ba2510ba44535cc44dd",
+    "pieces/gpt-5.4-mini/analysis.json": "9a356238c129a8039cb26b23521fbdf82ccb42de3af8c259f046b175d38a0116",
+    "pieces/gpt-5.4-mini/meta.json": "64bc4de9af7af7926267857af75f741ec4aa2893b22965face604de4bf2e142d",
+    "pieces/gpt-5.4-mini/piece.js": "7e1321c70fdce03cfb7f315c0f6a9b5c733012b1c200c18479caebd0b76ae4fb",
+    "pieces/gpt-5.4-mini/reply.txt": "7e1321c70fdce03cfb7f315c0f6a9b5c733012b1c200c18479caebd0b76ae4fb",
+    "pieces/gpt-5.4-mini/run.json": "08ec0f4c1007d7fa81f79891b9cf41fc79ae6c80474880fbdba53b32d294580a",
+    "pieces/gpt-5.4-mini/signals.json": "fba62afd054cb8508f0fefe63398acf7e66ce5a94f15aed654b62e04416599c6",
+    "pieces/gpt-5.6-luna/analysis.json": "f2d1a89cb0ab4bddd68384173a1eba92f782252c62c8b1784e13c3ca5b9cd92d",
+    "pieces/gpt-5.6-luna/meta.json": "c63e2ba32348d0bb813845c92a36a9d76f3ba5b70c0afecde5656940edb25e37",
+    "pieces/gpt-5.6-luna/piece.js": "caa1c69acc61ed6c2a4c4ce5d60e36f5ecd29b6c4ea5c640b964cd5ab6698da5",
+    "pieces/gpt-5.6-luna/reply.txt": "ac3e678786f356c644f32e036c082fc6c5aa22db41fb85fb31883dfa9f301d60",
+    "pieces/gpt-5.6-luna/run.json": "f71240cd0d401eabaed9269d2f8a7bb6c47d7c6718d70a95532f06851d862041",
+    "pieces/gpt-5.6-luna/signals.json": "e840cc46e0b53c77d2efd14d6182da3035f2d826b2a897527bd13ed5dd734cc3",
+    "pieces/gpt-5.6-sol/analysis.json": "8e0037b97d149c6c35cd8c2f0be7dbf7e63a5a4435139a50a2fcdda2fe5df7c4",
+    "pieces/gpt-5.6-sol/meta.json": "1fbe243db581dd29dffef88b8213f039b1cdca9c04e2cddf230637e12e19b83a",
+    "pieces/gpt-5.6-sol/piece.js": "914988545e2d476ac90bf0ec47e37fcb000e44f25a4a40d842417da50b54cf8f",
+    "pieces/gpt-5.6-sol/reply.txt": "914988545e2d476ac90bf0ec47e37fcb000e44f25a4a40d842417da50b54cf8f",
+    "pieces/gpt-5.6-sol/run.json": "6fd58851e3a46a9b6980325cd1fa0fca79ad0a84ce74130bf9d70d8bcbc0e080",
+    "pieces/gpt-5.6-sol/signals.json": "5327d6e9fb6fb1d1b447bf3694cc4d01484ccdb4edb8a2db4af643ccbedf5fc6",
+    "pieces/gpt-5.6-terra/analysis.json": "3358a1f4dfc27f96f7c75627931cc1fcb75a8b4e653bed3635568575ff18092e",
+    "pieces/gpt-5.6-terra/meta.json": "4fb2392543dde7d166d038b641b7e45fa091ee5abd88947393c0c62a6855e3b2",
+    "pieces/gpt-5.6-terra/piece.js": "477fb0e3adae62cd9c13550d7e700c2ea6680f4ed06fc526f8fecc221acc15f8",
+    "pieces/gpt-5.6-terra/reply.txt": "477fb0e3adae62cd9c13550d7e700c2ea6680f4ed06fc526f8fecc221acc15f8",
+    "pieces/gpt-5.6-terra/run.json": "beb649cbf5798f16910b2336707fe802d489540b3cfb2d001debd0054af4cd5b",
+    "pieces/gpt-5.6-terra/signals.json": "efcb0fee295aad23e265f370600d455fe44f5855233ae860405db8c81ee8f523",
+    "pieces/gpt-6-astra/analysis.json": "dee3c9080f7a56910c9d3e01d490cf5578e815a62dea862728a1457aab9c1cd0",
+    "pieces/gpt-6-astra/meta.json": "1b46f40db2df76ed189b8daf7b8385b097cb688764e5b7dd2a2c5ddc14663bcf",
+    "pieces/gpt-6-astra/piece.js": "e2ea22e050148945ee68e83d3d6d1dfc894063c01ce607396aa13e15bf57e87f",
+    "pieces/gpt-6-astra/reply.txt": "e2ea22e050148945ee68e83d3d6d1dfc894063c01ce607396aa13e15bf57e87f",
+    "pieces/gpt-6-astra/run.json": "f00dde62cb8cbc56132bea8e479d0c7271709dd98e696335e86d5e39e045ebdb",
+    "pieces/gpt-6-astra/signals.json": "dc1d17b905cb907ffe20c4dc711120d99bb78e42d12fc40ed7c4901ee770a320",
+    "pieces/gpt-6-luna/analysis.json": "51b6151db832ae41ec0086dec329bc16dd705b310e9b4ff45cb1f795041fd574",
+    "pieces/gpt-6-luna/meta.json": "78d96d22dc575ef6f42745d696b92f39d5d14c0559227252c253ce199ea4ffe2",
+    "pieces/gpt-6-luna/piece.js": "181d31352759cf835bcaa6516fc4a0798f11ffca042efaf2918ed43531d7cda3",
+    "pieces/gpt-6-luna/reply.txt": "5c9519a3b61fe49c986a910f270c6fdd7adeb335c0e06fd0f19a87037da3612c",
+    "pieces/gpt-6-luna/run.json": "8f818ed61f505341e23fb3095c4fc20458b678690c38ab39b3605e20d43c1465",
+    "pieces/gpt-6-luna/signals.json": "dc420f18b5b9bc0e368c37b72ca530a9e62822610565bf006324cbe1b54c4a40",
+    "pieces/gpt-6-sol/analysis.json": "c6f67af2034061f0c35949c782135f845f151d3831a75d289415bb01872f9387",
+    "pieces/gpt-6-sol/meta.json": "e6fc7c5f5470922c973aa3e0879af0e9ec7ab9b6a7cbbc165be0f0ab7fba9d0e",
+    "pieces/gpt-6-sol/piece.js": "cc5c317b8be1b38937c1ff6f57c4570120667c988b3afa33d7307b8489f3ecd0",
+    "pieces/gpt-6-sol/reply.txt": "cc5c317b8be1b38937c1ff6f57c4570120667c988b3afa33d7307b8489f3ecd0",
+    "pieces/gpt-6-sol/run.json": "b7c10329f354cb5a9c74cd967ee9dbd644378a49d9605f2258c09a86f2fce9f9",
+    "pieces/gpt-6-sol/signals.json": "73194700a57e6f1fab695c73e291b11041e9b98c57ab8a607575793b748202f2",
+    "pieces/gpt-6.1-sol/analysis.json": "be3b48164518b13c4dedeef649cf6b2103b26dc034621860a936682d480e6e59",
+    "pieces/gpt-6.1-sol/meta.json": "7ea938315207a373480561713a173e513d0d70c7f5ce3bfa1a9d5f1c0856a765",
+    "pieces/gpt-6.1-sol/piece.js": "8c59066becd275da77550c01ee707720ccdcdbe9885ec4fed1fff548339ac637",
+    "pieces/gpt-6.1-sol/reply.txt": "8c59066becd275da77550c01ee707720ccdcdbe9885ec4fed1fff548339ac637",
+    "pieces/gpt-6.1-sol/run.json": "65e797670969e3731e680803ef30acbcf121fbfdb570c258e3b8defa6c85350a",
+    "pieces/gpt-6.1-sol/signals.json": "a5716b82505dce3a80bbf5d53778d8c5a4e8f7e7193a8407ed629ccac3406179",
+    "pieces/gpt-6.1-terra/analysis.json": "542c6d8f196837a1b0cf82ac86805b846a8b8960f0069ee3de1a9c7c42800a00",
+    "pieces/gpt-6.1-terra/meta.json": "d158255ed38e76906b9f48ec852e8c7e8eb85a9a1124acc0521cc28eb017c09f",
+    "pieces/gpt-6.1-terra/piece.js": "9e3367184ee744b142625b93b1f6457251ab4619ef6089d7e34b1c1df3749a7f",
+    "pieces/gpt-6.1-terra/reply.txt": "06da147d3dc783f25cad557f60c327472e8421a1b88b5e6899ec24f894c0b486",
+    "pieces/gpt-6.1-terra/run.json": "c034a1afd18e055cd166de17b39e5f8bd7f5c157c67f900afc6cc956988eaabd",
+    "pieces/gpt-6.1-terra/signals.json": "ae4bc935e76f19bd25cc5275f10710a6e8d7f3c07f12547eeb00b3668edaa76d",
+    "pieces/gpt-6.2-astra/analysis.json": "1ff29f44eefa0eb427f62a3ca224afc7ee0339b7d36aa373136d1432e5b96628",
+    "pieces/gpt-6.2-astra/meta.json": "7f337c93f93d5c6eecae259b19975a7af8bb41821c3dc0588dc7077d7de741e9",
+    "pieces/gpt-6.2-astra/piece.js": "3844e73774f1b2ba629ce77c92e135192b18955452a23275709373ac5719c40f",
+    "pieces/gpt-6.2-astra/reply.txt": "3844e73774f1b2ba629ce77c92e135192b18955452a23275709373ac5719c40f",
+    "pieces/gpt-6.2-astra/run.json": "a188c006906d8943d30822adca5cb5f075923bbb0f99b18063d06a9ec2207717",
+    "pieces/gpt-6.2-astra/signals.json": "dcc57c4e91e1931c7478e0daec5f44b7956f671afe91a11205ba211c78aa1b5c",
+    "pieces/gpt-6.2-sol/analysis.json": "e85be19c41ee4c15c3bdeed2f1da094ff5eccbc6996bbb45a77332c63c9c8548",
+    "pieces/gpt-6.2-sol/meta.json": "178d8c1757242766d0070c3c3bba025d70e84b7e87ec83e03fd9d70e29e49fcc",
+    "pieces/gpt-6.2-sol/piece.js": "382dcf52cee0f092f37278af1fb20abaaa222a57370fa30c35a873b08106a822",
+    "pieces/gpt-6.2-sol/reply.txt": "382dcf52cee0f092f37278af1fb20abaaa222a57370fa30c35a873b08106a822",
+    "pieces/gpt-6.2-sol/run.json": "d32f9f854734bd52bbfa01dae1b15fbe2c7397f880b85a49dc8d1922afe44dbc",
+    "pieces/gpt-6.2-sol/signals.json": "bbabef19ecb6eb2c9f876a1ebb15dbafc32ff6457982d8dc68e289c73da8f7a9",
+    "pieces/grok-4.6/analysis.json": "82b3acc11e60e91be50d97722042c099ad2e22d6dba9fbebcddbfa3af6e3709c",
+    "pieces/grok-4.6/meta.json": "4c1d07c2227f4f5015c2e5f54190e8155623fe634a6011ff9f7f5996f8f72d82",
+    "pieces/grok-4.6/piece.js": "8eb2056f4113402da2c1a45f0cb5027884c3a5f63586f21ed5d02b25aef79c9c",
+    "pieces/grok-4.6/reply.txt": "4e6529914c703f10bb973380568fce142687af848ceb028922b5005c789335cf",
+    "pieces/grok-4.6/run.json": "d582ee9505a5b61b1c8adcd9e078ec32fb1d0c1d4424ce62ccc6f14059c1dff2",
+    "pieces/grok-4.6/signals.json": "42326165b7e8efe997a1d3db4a19807e4b6a2c129f39c0af4394571e1ec08fdf",
+    "pieces/grok-4.7-console/analysis.json": "300c1f44487dc87f0456392b6e6d1764c7073cad34fe07227f48b3bf57861817",
+    "pieces/grok-4.7-console/meta.json": "eebd96165ee7280d2837090098f642124226c65b28a65213c6c83923bd610efc",
+    "pieces/grok-4.7-console/piece.js": "d8b9cc646e3ef3aeac01d40d2f39e489af8f1a08fd0efac5f25ac1e3ab5daae0",
+    "pieces/grok-4.7-console/reply.txt": "d8b9cc646e3ef3aeac01d40d2f39e489af8f1a08fd0efac5f25ac1e3ab5daae0",
+    "pieces/grok-4.7-console/run.json": "70897bd4ad72ebb68884223f19f177b6724eb587442cbbfc6961ea8e523d82b2",
+    "pieces/grok-4.7-console/signals.json": "67bf7fdf906ef5f468fc9b7e3c82214c0e1b775bb13fd73b14aa8572e5676fd9",
+    "pieces/kimi-k3/analysis.json": "2104f252c8af98ddaa4909ce7d32a735cb4ccd5116a20e0b9b0a42efa97d1b5c",
+    "pieces/kimi-k3/meta.json": "15689146249cc14acdc0b9fc25f75eb65f02f84fe076169f618f3d1fdcd6cd48",
+    "pieces/kimi-k3/piece.js": "3326d7164fac0fc36d7bf79e08eb9d2833fa94a4d146d1f5dffd191cb1c5020b",
+    "pieces/kimi-k3/reply.txt": "3326d7164fac0fc36d7bf79e08eb9d2833fa94a4d146d1f5dffd191cb1c5020b",
+    "pieces/kimi-k3/run.json": "0b0fa09a2c7fd29b087a879d40610e4be84f508b07a96f28c0d1e5e461ed018b",
+    "pieces/kimi-k3/signals.json": "0cf5bf8bd881a0052a9aa7449494dbcb2d4954b08138a620d44c17aab4fc4234",
+    "pieces/minimax-m3/analysis.json": "7f6e40de85904c65b30921c008e7fb97227b325d7f58b350ec849bdb428c743c",
+    "pieces/minimax-m3/meta.json": "613a715c0e32c68e83651ee148260710d1af64c54aacef10fe7d85df68d3b74b",
+    "pieces/minimax-m3/piece.js": "fe56faaab20e4e1ec51c26692aa1d552ee62f4cfef8eb780d5aa716fb57e8344",
+    "pieces/minimax-m3/reply.txt": "b6166edfa984207c68f72101771f964fbc13d19220ba10e781047522a2591a28",
+    "pieces/minimax-m3/run.json": "bd1cdf81eb81d8d72e705f9767c713f76f9ce63894188e4863dcee97d7b41e85",
+    "pieces/minimax-m3/signals.json": "001d2b9305451c6317b054bc97f8812f0e1c48bcacaa11f7e0e06a9a4cdb19a7",
+    "pieces/mistral-large-4/analysis.json": "8312e603452a555b763d2bfdf88cce7a8322b68d40e0ba63734b42bdc72b2c9b",
+    "pieces/mistral-large-4/meta.json": "4d8479f58089d1a447bec6a170d8dd0916780a64e28b880d2b06a69f0456c44e",
+    "pieces/mistral-large-4/piece.js": "2b70ace0bfe7fa29eb639becd8b53edb27cc1662ab4688bc66f43738ed7ab129",
+    "pieces/mistral-large-4/reply.txt": "99e0f5512a0c1c32fcfc3d67eb0708f106f946bdcd38d34c956377679fa44152",
+    "pieces/mistral-large-4/run.json": "08a40311ff6fdf29d6e959e8ebb535f314790f820d43b55017fd54d94ecfb2a5",
+    "pieces/mistral-large-4/signals.json": "2603ead58658890f54e6710f3200f295de289ee3d562abb497687a4de5760685",
+    "pieces/muse-ember-1.0/analysis.json": "5dd5e511d4fab17a9423d68445b9600bb463221b4c37e73dc8385a9c1b2ec6e2",
+    "pieces/muse-ember-1.0/meta.json": "6c0c560759e74e2de4b0ddf77f081e85dbafd74c5bbb89cda8129c7bda5be82a",
+    "pieces/muse-ember-1.0/piece.js": "6e3feb59935c2be5a61f821fd1b32b39d47ca5eb3dae4ad2118da2d3aeee99f4",
+    "pieces/muse-ember-1.0/reply.txt": "0fe666c2e819474e315440a93bcf55c7499bd0e0c278f0f98cc5c2f8843eea27",
+    "pieces/muse-ember-1.0/run.json": "5cc54efc4f3f37960eb9efdb18531c12530be63c9191fdb79376f7202888967d",
+    "pieces/muse-ember-1.0/signals.json": "b35ccca5cea385a295c05eaa687707fce421b77e6d86d784bd60dd37bd4d2883",
+    "pieces/muse-wonder-1.0/analysis.json": "8199308c50b4bcfb82690ad097b59a3e8aaa957e86205c39ab4c112b89262812",
+    "pieces/muse-wonder-1.0/meta.json": "81f9302455f24c8ac89cd87cd1be5427575a710ffb1ac33f4fc31767482cc2f4",
+    "pieces/muse-wonder-1.0/piece.js": "209dd26a958e6c366dbcc2157c936ac98a29e0e8d3ab5bc25b48a86745207975",
+    "pieces/muse-wonder-1.0/reply.txt": "f6ff5c25549be255a16ac3b817c35c22bb52b11b2fc3c7c3e8c12e514141d0cf",
+    "pieces/muse-wonder-1.0/run.json": "9cf198938728be40fd23be746b598f56aaa5a5adc639c217323c623c44cb5d8f",
+    "pieces/muse-wonder-1.0/signals.json": "83758465a756dc28512a6013f781e6bcdee09547ef114cc718d5b8400d2b214d",
+    "pieces/qwen3.8-flash/analysis.json": "0f729dd422af72177eace08ddad2712620cc1d4b41a4bbecf768d0882a814a36",
+    "pieces/qwen3.8-flash/meta.json": "53da0b82783bcc0c196fe10a8fff5fe9a7cace27023e895b593827c57eb540cf",
+    "pieces/qwen3.8-flash/piece.js": "c4f3142b1280755bea5c22ca62040c1aa9797c08ceb25e0877a8c75e5d0af7e8",
+    "pieces/qwen3.8-flash/reply.txt": "c4f3142b1280755bea5c22ca62040c1aa9797c08ceb25e0877a8c75e5d0af7e8",
+    "pieces/qwen3.8-flash/run.json": "0f70b056f610e479732fc5390507bf59c6c587667b21d1e9a10bbfbc8e5d511b",
+    "pieces/qwen3.8-flash/signals.json": "3de3aa8f8df2ddbcf5069052a0f6351f24aceb91df62a2b7f6e9fc9e6052300d"
+  },
+  "media": {
+    "pieces/claude-fable-5-2/clip.mp4": {
+      "sha256": "0502b911f39b59ae5d96782d8cdc170ae973452bfde3c60a39bb0d2ce0eb5d4e",
+      "size": 4620980,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.CB7vppDg.mp4"
+    },
+    "pieces/claude-fable-5-2/poster.jpg": {
+      "sha256": "f08064a92e59f5c8d7364fef19c1627bebd3466ef6588fe092532ba32dd5e4e9",
+      "size": 41361,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.ColNmb_N.jpg"
+    },
+    "pieces/claude-haiku-5-5/clip.mp4": {
+      "sha256": "8cb81c104dfd4a2fbd6651d8587bcf4af6017be2cd3abd949aa3ad5db0a094b2",
+      "size": 2520586,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.CtkfI4xv.mp4"
+    },
+    "pieces/claude-haiku-5-5/poster.jpg": {
+      "sha256": "c6b43cb8a1bff2ae8fae21a26b1983151db452551f41afa04aaafa1f299cc4ba",
+      "size": 20359,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.CcMuycf1.jpg"
+    },
+    "pieces/claude-opus-4-8/clip.mp4": {
+      "sha256": "c672524104553d3d8e8da1e234a056bbce0c994b2bcb8891ef26a29cd9288182",
+      "size": 11336405,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.bg-AKSvx.mp4"
+    },
+    "pieces/claude-opus-4-8/poster.jpg": {
+      "sha256": "d0aad6fa834b05f823b3de57cec927d373ada26f42785616f66c1234a2f2e9a3",
+      "size": 67833,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.DcKIpGcD.jpg"
+    },
+    "pieces/claude-opus-5-5/clip.mp4": {
+      "sha256": "03b410d8701a3bbdbf520dca45d8bf2be6165ce35d19dcbdf940cd321667660b",
+      "size": 2870434,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.DOS7ulBU.mp4"
+    },
+    "pieces/claude-opus-5-5/poster.jpg": {
+      "sha256": "2fc115b354012f0f22b917ed3adbd6c0a666f18be06064522121bfc169b4a88c",
+      "size": 28244,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.CJ1WAM5a.jpg"
+    },
+    "pieces/claude-sonnet-4-6/clip.mp4": {
+      "sha256": "4a7a3d7a129005c5f004387819032f88f9477b85ce6dc5d5335edb8d4c2ffa89",
+      "size": 4995148,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.7iZP-6hd.mp4"
+    },
+    "pieces/claude-sonnet-4-6/poster.jpg": {
+      "sha256": "63ddd36a42166e30e431364ab84d772670490411ee11cadd0a5b2e7b9aa919f4",
+      "size": 12234,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.BpvDyjcQ.jpg"
+    },
+    "pieces/claude-sonnet-5-5/clip.mp4": {
+      "sha256": "83e0d33ac6674aee404263614b64a80fd03f22f198df28da3ba87a90b993211e",
+      "size": 6533662,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.BUt_qk_F.mp4"
+    },
+    "pieces/claude-sonnet-5-5/poster.jpg": {
+      "sha256": "4a0a3f7d84cd989333cc1d624e4fb8aabc832561a6229d517713d534e0801ecb",
+      "size": 25906,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.DgJyy_gR.jpg"
+    },
+    "pieces/composer-2.5/clip.mp4": {
+      "sha256": "94c63a34403458ee17fdd4e3311fd45b73ec2cffd60f41947e97624b01c2891c",
+      "size": 3841396,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.CwfZ-gJj.mp4"
+    },
+    "pieces/composer-2.5/poster.jpg": {
+      "sha256": "6b9dec2fdb79c9df466f605ec41bfbcea75580b64bad618a8821d120c46fdfa1",
+      "size": 34469,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.C9UkQ8Pa.jpg"
+    },
+    "pieces/deepseek-v4-pro/clip.mp4": {
+      "sha256": "efae0f565b5e165385b03c774c69bca2f6a0706f7d04a98d09e4bd6bf7b2057d",
+      "size": 9854213,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.CXzngCW3.mp4"
+    },
+    "pieces/deepseek-v4-pro/poster.jpg": {
+      "sha256": "b62a746a0b5a5e6bf0b329258961fb20365c27e6607fd666f26d3136d5e70384",
+      "size": 64905,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.BexUElB-.jpg"
+    },
+    "pieces/deepseek-v4.1-flash/clip.mp4": {
+      "sha256": "e6acd91991e88191ab9956dac17ceb936e2e463d5b89f74d048a8b49c9d087c2",
+      "size": 8116112,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.CKnKZnBq.mp4"
+    },
+    "pieces/deepseek-v4.1-flash/poster.jpg": {
+      "sha256": "06c68fa6a7e946851d1e59c33a235cc53750d19c53c9f9986305b3816ea95ee5",
+      "size": 35473,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.oDHn_l2q.jpg"
+    },
+    "pieces/gemini-3.8-flash/clip.mp4": {
+      "sha256": "4f6395b284f2566c1af56d089dca59656e52a66d4e70db348291aef94b916b0b",
+      "size": 7242051,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.DFWd8nvs.mp4"
+    },
+    "pieces/gemini-3.8-flash/poster.jpg": {
+      "sha256": "f824c369648288bd539e250ee9236e0610c3cbd72920c994b55b9fb96f6fcfdf",
+      "size": 59701,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.X1f2StK4.jpg"
+    },
+    "pieces/gemini-4-argon/clip.mp4": {
+      "sha256": "3fb6856f391d1ba23698a7e43b024d1641036d7521db74e49709bad4fcce01db",
+      "size": 13208284,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.2ciJEOCw.mp4"
+    },
+    "pieces/gemini-4-argon/poster.jpg": {
+      "sha256": "46fe1a4a28fdb68cb201b54ae5e1f56d6877de42e1afee5623a84576396212e6",
+      "size": 79748,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.DNKR_qUb.jpg"
+    },
+    "pieces/gemini-4-carbon/clip.mp4": {
+      "sha256": "1c006b3aae3a4b38449a8fec85088579d58865e5ede7a0d86f22ea34c52cf6e4",
+      "size": 8616867,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.DHFKDtXT.mp4"
+    },
+    "pieces/gemini-4-carbon/poster.jpg": {
+      "sha256": "982c3dda209b771c3fe8fde4af532c9bf49790bd9c8bd7a34665a058a385b857",
+      "size": 69488,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.BlObhD17.jpg"
+    },
+    "pieces/gemini-4-hydrogen/clip.mp4": {
+      "sha256": "6fd7ac7b78be11436b50d3b91da690692d211458e59b34a2fea9132b87e3a0dc",
+      "size": 5955985,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.DSAlKfrP.mp4"
+    },
+    "pieces/gemini-4-hydrogen/poster.jpg": {
+      "sha256": "89fe14f5f07f45a9aaa75112600e0be3800ddf997bc652c9c63892a32e7ed5c6",
+      "size": 61611,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.DlFKtFR3.jpg"
+    },
+    "pieces/gemini-4-neon/clip.mp4": {
+      "sha256": "f59bbc468b2df0b3836bb6fb727aa1507c0ac9c69c522c91af87436022398a75",
+      "size": 9369645,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.D1ZTBsPl.mp4"
+    },
+    "pieces/gemini-4-neon/poster.jpg": {
+      "sha256": "1eb194ff9d4edc08e24a87eba2dc7fabba80aab1f67b95e680edb6716e898c3c",
+      "size": 70915,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.BxDIxOws.jpg"
+    },
+    "pieces/glm-5.3/clip.mp4": {
+      "sha256": "3e91f5edcb6c30903ad69db92fa2aa7dac0d45b2c0828ca8e8bc1c660e3ae611",
+      "size": 3603182,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.DovNOw-E.mp4"
+    },
+    "pieces/glm-5.3/poster.jpg": {
+      "sha256": "76af6fe9f1bbc51dcbb14ed0b081c4b6dc05b721bd84d7ab0fb3a03e07277da2",
+      "size": 68217,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.CCAfcgrw.jpg"
+    },
+    "pieces/gpt-5.3-codex/clip.mp4": {
+      "sha256": "b7bae255634c9a272ea4929bd05b6f318780cb5e8502fdba3ce1ecf1c82332aa",
+      "size": 9131754,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.CBL7QwaL.mp4"
+    },
+    "pieces/gpt-5.3-codex/poster.jpg": {
+      "sha256": "654d1c0aadd34eab027ccf0cb544a678607b83c4b405c2c8c7b60e3d39b4f494",
+      "size": 46226,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.Bv1hZrFS.jpg"
+    },
+    "pieces/gpt-5.4-mini/clip.mp4": {
+      "sha256": "994c5d2473fb8976d0c6d6f098e9a000b831a1d40c4eb76e9bd3fc5569c9d42b",
+      "size": 4073476,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.Cz6cGQKv.mp4"
+    },
+    "pieces/gpt-5.4-mini/poster.jpg": {
+      "sha256": "43935c786eb7b78bf2b6ec5be3b465de8e3f7e850f60bbc53d7b563096901e14",
+      "size": 42156,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.C5U3ecVb.jpg"
+    },
+    "pieces/gpt-5.6-luna/clip.mp4": {
+      "sha256": "547a60fb36538b7b5fe26e1fbe3b231e4a50ab04fa9935ddfef15f9f71cda73d",
+      "size": 3029910,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.5zdrUiXV.mp4"
+    },
+    "pieces/gpt-5.6-luna/poster.jpg": {
+      "sha256": "515015ba4fd0939e9adcc6414824c6646d640c4019accd3c8775e1e7f7097101",
+      "size": 41892,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.BrrSgHUO.jpg"
+    },
+    "pieces/gpt-5.6-sol/clip.mp4": {
+      "sha256": "f1a1805326fbb0848792845e21b7444093ff87522b29769d19a46b9887704eec",
+      "size": 4592404,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.l0sSzdta.mp4"
+    },
+    "pieces/gpt-5.6-sol/poster.jpg": {
+      "sha256": "afd169732b1c2457870278c03a72d6e7326a14eca9af50c521dabe51456531b3",
+      "size": 36471,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.C9wgUBUp.jpg"
+    },
+    "pieces/gpt-5.6-terra/clip.mp4": {
+      "sha256": "c15261966d6cb9afd54a07d40ad86ebdb5de781c6d0d810e4d364a2f4ee735a8",
+      "size": 3030876,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.Cq6JHLtr.mp4"
+    },
+    "pieces/gpt-5.6-terra/poster.jpg": {
+      "sha256": "8106f9e570015bec66d2eef390b0c91c16e4d07babccc04c49b7ca6f3ab02516",
+      "size": 25064,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.BiL8htTo.jpg"
+    },
+    "pieces/gpt-6-astra/clip.mp4": {
+      "sha256": "a7ce780a802540edca521b32a3339860eb2c04f51ec7543d2420938097c5d558",
+      "size": 2412581,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.GrZCM_nG.mp4"
+    },
+    "pieces/gpt-6-astra/poster.jpg": {
+      "sha256": "2c2f160d0fa0a8aef34aa14ffba2cd77566849350a3d0ec4288aff70b548caca",
+      "size": 40599,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.BQzmUDYC.jpg"
+    },
+    "pieces/gpt-6-luna/clip.mp4": {
+      "sha256": "af709c8ed78e25e0347a6c364f6c3a03a7259e74ff19551ef2299490e610e157",
+      "size": 2294886,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.CeLKBmOV.mp4"
+    },
+    "pieces/gpt-6-luna/poster.jpg": {
+      "sha256": "0ce01112a7c59c928239602ec344c0476ca08254dca0380401dc031f53a7446c",
+      "size": 35607,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.CN8rUW6Z.jpg"
+    },
+    "pieces/gpt-6-sol/clip.mp4": {
+      "sha256": "02504d6c011a4c2aa1b9b836244cacc6b7af879ec5d821d1bf35e6b754316530",
+      "size": 2733133,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.DI7cbymw.mp4"
+    },
+    "pieces/gpt-6-sol/poster.jpg": {
+      "sha256": "745c4c2fcc5b439ff6bb0ef1b98a7f619b1596ed645f3981b36a36437fbacc17",
+      "size": 47522,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.14x7IASJ.jpg"
+    },
+    "pieces/gpt-6.1-sol/clip.mp4": {
+      "sha256": "c97a0145efd4cf5655196ef7893027bf26ecbd4bd034ecf47f7cb166571fd7c2",
+      "size": 2603835,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.Dwro5-81.mp4"
+    },
+    "pieces/gpt-6.1-sol/poster.jpg": {
+      "sha256": "ed1a1d9fcbc7f330109965f3568dd989cdfac73624a47291f5df04a60f102b3b",
+      "size": 44825,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.DYpBbXjL.jpg"
+    },
+    "pieces/gpt-6.1-terra/clip.mp4": {
+      "sha256": "72cc175c49f06eeea1ef822a11976377d69baeb8d3e68d94fb76dd0cdcd2ad61",
+      "size": 2445566,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.BSj-uRsS.mp4"
+    },
+    "pieces/gpt-6.1-terra/poster.jpg": {
+      "sha256": "90b059e1775f1b419e16119f8c259eeddc7ef6484fcba4974b4fd860cf377d45",
+      "size": 37057,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.BaSznUi3.jpg"
+    },
+    "pieces/gpt-6.2-astra/clip.mp4": {
+      "sha256": "24bbc6249c0b4bb07c3c02ea85d882da2121a93198e11cb755bcd8adcd2b5361",
+      "size": 4190058,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.BM3fZbqZ.mp4"
+    },
+    "pieces/gpt-6.2-astra/poster.jpg": {
+      "sha256": "1171c63d298bc238f40bb701eddc49ee2f2f36a469efe775a4b061600cd38660",
+      "size": 43022,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.DWtP1NiL.jpg"
+    },
+    "pieces/gpt-6.2-sol/clip.mp4": {
+      "sha256": "ceaf30b38638cbe2a8e43b690aed15d279299ff49a5f8e791019403b25d0ca99",
+      "size": 4304114,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.CT1NnIZW.mp4"
+    },
+    "pieces/gpt-6.2-sol/poster.jpg": {
+      "sha256": "508e4e1a660c793759493ed2f602fec858f52f46d9289b634c3a4e603580ec5a",
+      "size": 47073,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.BuOZN7As.jpg"
+    },
+    "pieces/grok-4.6/clip.mp4": {
+      "sha256": "d63f1fc293f58ab599fcba5b4cc2c585407b32e70b9d25cd631dc96f50bc015e",
+      "size": 2799980,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.DBWGcdiJ.mp4"
+    },
+    "pieces/grok-4.6/poster.jpg": {
+      "sha256": "a5a53320aab9c59bc3fc4077c63ec8a42a84bf58943880e65d6ee5c632a682f2",
+      "size": 16442,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.BZRRDUIx.jpg"
+    },
+    "pieces/grok-4.7-console/clip.mp4": {
+      "sha256": "c47351ec277a254610ba1847a3b932d471b15a9fcd8ef884f9e798742adc60ff",
+      "size": 4897916,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.DwDZbhk4.mp4"
+    },
+    "pieces/grok-4.7-console/poster.jpg": {
+      "sha256": "1d3d15490b07b6b41a024364bf96a92d69825a3923d737eb31b969580f1de090",
+      "size": 63312,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.CVM0VY_Z.jpg"
+    },
+    "pieces/kimi-k3/clip.mp4": {
+      "sha256": "4451bb58959bfa7d3b351e6906f8046a829bf124da7346b2d0d26b85ee97d2a3",
+      "size": 3685958,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.9CFhLcZQ.mp4"
+    },
+    "pieces/kimi-k3/poster.jpg": {
+      "sha256": "c099de3d828344c6abdf5b49faf33cc79eae9a8c4be3c91aa1b90336327b1d25",
+      "size": 39110,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.B2jo7_zt.jpg"
+    },
+    "pieces/minimax-m3/clip.mp4": {
+      "sha256": "10ac1cd724152ba54dd9065f06d677068f8cad9c4593f9368203c1f19e1ae61d",
+      "size": 6193205,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.DDIL7Hek.mp4"
+    },
+    "pieces/minimax-m3/poster.jpg": {
+      "sha256": "5d8764f6f155d8ef9fc37570976d1446be8a3bc13f60f01e108074a800e1623b",
+      "size": 38162,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.CotaOHtk.jpg"
+    },
+    "pieces/mistral-large-4/clip.mp4": {
+      "sha256": "6cf2f6ad2f442592872a00429705c5676047d44305ae656aa13fbc871ea581c7",
+      "size": 4119794,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.h0Yvty3S.mp4"
+    },
+    "pieces/mistral-large-4/poster.jpg": {
+      "sha256": "0359830f1b7e16bf804d62eef6846e43f7ef2923a724f45c0b7e0eca2bc51c9d",
+      "size": 37752,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.DfD7-rMT.jpg"
+    },
+    "pieces/muse-ember-1.0/clip.mp4": {
+      "sha256": "99599afadf2be43ce6efe4ab132b3f3985bc29a05bbcd8ffeb5251923abed6e7",
+      "size": 5249860,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.KQH7KU7_.mp4"
+    },
+    "pieces/muse-ember-1.0/poster.jpg": {
+      "sha256": "7383cad20fa07c1e482418793df232153d9fc9e679088b0f38b5d2b0ecb2bd42",
+      "size": 26448,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.DNqGs6TJ.jpg"
+    },
+    "pieces/muse-wonder-1.0/clip.mp4": {
+      "sha256": "aaefa37e6f04844455f3f1b62eb9f500e93c3a4e64ab0712be14fe9c1f5b4862",
+      "size": 3351402,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.Ca8EO5dM.mp4"
+    },
+    "pieces/muse-wonder-1.0/poster.jpg": {
+      "sha256": "f00e22906692b23f426a9999674b8173c06f426bd689b60ce9705b7ea87ca04b",
+      "size": 41136,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.NUodVszr.jpg"
+    },
+    "pieces/qwen3.8-flash/clip.mp4": {
+      "sha256": "0363207b681ee6620870142a3040b94f39f7fd0d1dadb1a447a75f09ebb3d8f9",
+      "size": 5212623,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/clip.Crm38RDc.mp4"
+    },
+    "pieces/qwen3.8-flash/poster.jpg": {
+      "sha256": "852a227993b4f441f72289ad64b84181753c2a0c401d824956d873b82c3c5410",
+      "size": 32669,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "sourceUrl": "https://bach.wlkr.si/_astro/poster.DWWWi4Do.jpg"
+    }
+  }
+}

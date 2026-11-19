@@ -1,0 +1,58 @@
+{
+  "wallSeconds": {
+    "value": 417.953,
+    "source": "tool-result"
+  },
+  "toolReportedDurationSeconds": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "inputTokens": {
+    "value": 261,
+    "source": "tool-result"
+  },
+  "outputTokens": {
+    "value": 63853,
+    "source": "tool-result"
+  },
+  "reasoningTokens": {
+    "value": 55959,
+    "source": "tool-result"
+  },
+  "cachedReadTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "cachedWriteTokens": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "reportedCostUsd": {
+    "value": 0.22266258,
+    "source": "tool-result"
+  },
+  "reportedModelId": {
+    "value": "deepseek-v4-pro",
+    "source": "tool-result"
+  },
+  "requestedModelId": {
+    "value": "deepseek-v4-pro",
+    "source": "tool-result"
+  },
+  "tool": {
+    "value": "OpenCode Console",
+    "source": "tool-result"
+  },
+  "toolVersion": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "effort": {
+    "value": "high",
+    "source": "tool-result"
+  },
+  "effortSetting": {
+    "value": "high",
+    "source": "tool-result"
+  }
+}

@@ -1,0 +1,1722 @@
+```javascript
+export const title = 'Nocturne of the Brass Astrolabe';
+
+export function start({ audioContext, canvas, duration = 15, random }) {
+  // Deterministic fallback PRNG if random is not provided
+  const rand = typeof random === 'function' ? random : (() => {
+    let s = 0x1a2b3c4d;
+    return () => {
+      s |= 0;
+      s = (s + 0x6d2b79f5) | 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  })();
+
+  const W = 1080;
+  const H = 1350;
+  const CX = 540;
+  const CY = 615;
+  const TOTAL_DUR = Math.max(1, duration || 15);
+  const TIME_SCALE = TOTAL_DUR / 15;
+  const BPM = 128;
+  const BEAT = (60 / BPM) * TIME_SCALE; // 32 beats = 15.000s exact
+
+  if (audioContext && audioContext.state === 'suspended') {
+    audioContext.resume().catch(() => {});
+  }
+
+  // =========================================================================
+  // 1. MASTER AUDIO ENGINE & STUDIO EFFECTS BUS
+  // =========================================================================
+  const ctx = audioContext;
+  const now0 = ctx.currentTime;
+  const startTime = now0 + 0.045;
+
+  const midiToFreq = (m) => 440 * Math.pow(2, (m - 69) / 12);
+
+  const createPanner = (panVal) => {
+    if (typeof ctx.createStereoPanner === 'function') {
+      const p = ctx.createStereoPanner();
+      p.pan.value = Math.max(-1, Math.min(1, panVal));
+      return p;
+    }
+    return ctx.createGain();
+  };
+
+  // Master signal chain: mixBus -> warmthEQ -> softClip -> compressor -> masterFade -> analyser -> destination
+  const mixBus = ctx.createGain();
+  mixBus.gain.value = 0.78;
+
+  const lowShelf = ctx.createBiquadFilter();
+  lowShelf.type = 'lowshelf';
+  lowShelf.frequency.value = 95;
+  lowShelf.gain.value = 2.2;
+
+  const mudDip = ctx.createBiquadFilter();
+  mudDip.type = 'peaking';
+  mudDip.frequency.value = 310;
+  mudDip.Q.value = 1.1;
+  mudDip.gain.value = -1.8;
+
+  const airShelf = ctx.createBiquadFilter();
+  airShelf.type = 'highshelf';
+  airShelf.frequency.value = 6200;
+  airShelf.gain.value = 2.6;
+
+  // Gentle analog soft-clipper
+  const saturator = ctx.createWaveShaper();
+  const satCurve = new Float32Array(2048);
+  const satNorm = Math.tanh(1.3);
+  for (let i = 0; i < 2048; i++) {
+    const x = (i / 1023.5) - 1;
+    satCurve[i] = Math.tanh(x * 1.3) / satNorm;
+  }
+  saturator.curve = satCurve;
+  saturator.oversample = '2x';
+
+  const compressor = ctx.createDynamicsCompressor();
+  compressor.threshold.value = -12;
+  compressor.knee.value = 18;
+  compressor.ratio.value = 3.2;
+  compressor.attack.value = 0.012;
+  compressor.release.value = 0.18;
+
+  const masterFade = ctx.createGain();
+  masterFade.gain.setValueAtTime(0.0001, now0);
+  masterFade.gain.linearRampToValueAtTime(1.0, startTime + 0.03);
+  const fadeStart = startTime + Math.max(0.5, TOTAL_DUR - 0.85);
+  const fadeEnd = startTime + Math.max(0.6, TOTAL_DUR - 0.04);
+  masterFade.gain.setValueAtTime(1.0, fadeStart);
+  masterFade.gain.exponentialRampToValueAtTime(0.0001, fadeEnd);
+
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 1024;
+  analyser.smoothingTimeConstant = 0.8;
+
+  mixBus.connect(lowShelf);
+  lowShelf.connect(mudDip);
+  mudDip.connect(airShelf);
+  airShelf.connect(saturator);
+  saturator.connect(compressor);
+  compressor.connect(masterFade);
+  masterFade.connect(analyser);
+  analyser.connect(ctx.destination);
+
+  // Algorithmic Cathedral Convolution Reverb (deterministic stereo IR)
+  const buildCathedralIR = (seconds = 2.6) => {
+    const sr = ctx.sampleRate;
+    const len = Math.floor(sr * seconds);
+    const buf = ctx.createBuffer(2, len, sr);
+    const earlyTaps = [
+      { t: 0.017, l: 0.55, r: 0.25 },
+      { t: 0.029, l: 0.22, r: 0.52 },
+      { t: 0.043, l: 0.40, r: 0.32 },
+      { t: 0.061, l: 0.28, r: 0.38 },
+      { t: 0.083, l: 0.22, r: 0.20 },
+    ];
+    for (let ch = 0; ch < 2; ch++) {
+      const data = buf.getChannelData(ch);
+      let lp = 0;
+      const preDelay = Math.floor(sr * 0.019);
+      for (let i = preDelay; i < len; i++) {
+        const u = (i - preDelay) / (len - preDelay);
+        const env = Math.pow(1 - u, 2.75) * Math.exp(-u * 2.8);
+        const white = rand() * 2 - 1;
+        // Progressive high-frequency air damping across the hall tail
+        const coeff = 0.06 + 0.34 * Math.pow(1 - u, 1.4);
+        lp += coeff * (white - lp);
+        data[i] = lp * env * 0.58;
+      }
+      for (const tap of earlyTaps) {
+        const idx = Math.floor(tap.t * sr);
+        if (idx < len) {
+          data[idx] += (ch === 0 ? tap.l : tap.r) * 0.35;
+        }
+      }
+    }
+    return buf;
+  };
+
+  const reverbSend = ctx.createGain();
+  reverbSend.gain.value = 1.0;
+  const convolver = ctx.createConvolver();
+  convolver.buffer = buildCathedralIR(2.65);
+  const reverbLP = ctx.createBiquadFilter();
+  reverbLP.type = 'lowpass';
+  reverbLP.frequency.value = 5200;
+  const reverbReturn = ctx.createGain();
+  reverbReturn.gain.value = 0.38;
+
+  reverbSend.connect(convolver);
+  convolver.connect(reverbLP);
+  reverbLP.connect(reverbReturn);
+  reverbReturn.connect(mixBus);
+
+  // Stereo Ping-Pong Tape Delay for crystalline counterpoint echoes
+  const delaySend = ctx.createGain();
+  delaySend.gain.value = 1.0;
+  const delayL = ctx.createDelay(1.0);
+  const delayR = ctx.createDelay(1.0);
+  delayL.delayTime.value = BEAT * 0.75; // dotted 8th
+  delayR.delayTime.value = BEAT * 0.5;  // 8th
+  const delayFilter = ctx.createBiquadFilter();
+  delayFilter.type = 'lowpass';
+  delayFilter.frequency.value = 3100;
+  const delayFb = ctx.createGain();
+  delayFb.gain.value = 0.26;
+  const delayPanL = createPanner(-0.68);
+  const delayPanR = createPanner(0.68);
+  const delayReturn = ctx.createGain();
+  delayReturn.gain.value = 0.21;
+
+  delaySend.connect(delayFilter);
+  delayFilter.connect(delayL);
+  delayL.connect(delayR);
+  delayR.connect(delayFb);
+  delayFb.connect(delayFilter);
+  delayL.connect(delayPanL);
+  delayR.connect(delayPanR);
+  delayPanL.connect(delayReturn);
+  delayPanR.connect(delayReturn);
+  delayReturn.connect(mixBus);
+
+  // Short shared white-noise buffer for organic felt-hammer & clockwork clicks
+  const noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.25), ctx.sampleRate);
+  {
+    const ch = noiseBuf.getChannelData(0);
+    for (let i = 0; i < ch.length; i++) ch[i] = rand() * 2 - 1;
+  }
+
+  // =========================================================================
+  // 2. BESPOKE INSTRUMENT SYNTHESIS
+  // =========================================================================
+
+  // Instrument A: Harp / Celesta / Felt-Piano Hybrid (Bachian Counterpoint)
+  const playHarpCelesta = (t, midi, vel = 0.5, dur = 1.2, pan = 0) => {
+    const freq = midiToFreq(midi);
+    const out = ctx.createGain();
+    const panner = createPanner(pan);
+    out.connect(panner);
+    panner.connect(mixBus);
+
+    const revTap = ctx.createGain();
+    revTap.gain.value = 0.42;
+    panner.connect(revTap);
+    revTap.connect(reverbSend);
+
+    const delTap = ctx.createGain();
+    delTap.gain.value = midi >= 64 ? 0.26 : 0.12;
+    panner.connect(delTap);
+    delTap.connect(delaySend);
+
+    // Filter envelope
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    const peakCut = Math.min(12000, freq * (4.2 + vel * 4.5));
+    const tailCut = Math.min(6000, freq * 1.9);
+    filter.frequency.setValueAtTime(peakCut, t);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(180, tailCut), t + dur * 0.85);
+    filter.Q.value = 0.85;
+    filter.connect(out);
+
+    // Core warm body (triangle + subtle 2nd harmonic sine)
+    const osc1 = ctx.createOscillator();
+    osc1.type = 'triangle';
+    osc1.frequency.setValueAtTime(freq, t);
+
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(freq * 2, t);
+    const g2 = ctx.createGain();
+    g2.gain.setValueAtTime(0.24 * vel, t);
+    g2.gain.exponentialRampToValueAtTime(0.0001, t + dur * 0.55);
+
+    // FM glass/celesta bell transient
+    const fmCarrier = ctx.createOscillator();
+    const fmMod = ctx.createOscillator();
+    const fmDepth = ctx.createGain();
+    const fmOut = ctx.createGain();
+    fmCarrier.type = 'sine';
+    fmMod.type = 'sine';
+    fmCarrier.frequency.setValueAtTime(freq, t);
+    fmMod.frequency.setValueAtTime(freq * 3.003, t);
+    fmDepth.gain.setValueAtTime(freq * (0.9 + vel * 1.1), t);
+    fmDepth.gain.exponentialRampToValueAtTime(0.1, t + 0.11);
+    fmOut.gain.setValueAtTime(0.22 * vel, t);
+    fmOut.gain.exponentialRampToValueAtTime(0.0001, t + Math.min(dur, 0.75));
+    fmMod.connect(fmDepth);
+    fmDepth.connect(fmCarrier.frequency);
+    fmCarrier.connect(fmOut);
+    fmOut.connect(filter);
+
+    // Subtle wooden hammer attack transient
+    const hammer = ctx.createBufferSource();
+    hammer.buffer = noiseBuf;
+    const hFilt = ctx.createBiquadFilter();
+    hFilt.type = 'bandpass';
+    hFilt.frequency.value = Math.min(5500, freq * 2.4);
+    hFilt.Q.value = 2.0;
+    const hGain = ctx.createGain();
+    hGain.gain.setValueAtTime(0.065 * vel, t);
+    hGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.018);
+    hammer.connect(hFilt);
+    hFilt.connect(hGain);
+    hGain.connect(out);
+
+    // Amplitude envelope
+    const peak = 0.25 * vel;
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.linearRampToValueAtTime(peak, t + 0.006);
+    out.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak * 0.34), t + Math.min(0.24, dur * 0.35));
+    out.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+    osc1.connect(filter);
+    osc2.connect(g2);
+    g2.connect(filter);
+
+    const stopT = t + dur + 0.05;
+    osc1.start(t);
+    osc2.start(t);
+    fmCarrier.start(t);
+    fmMod.start(t);
+    hammer.start(t);
+    osc1.stop(stopT);
+    osc2.stop(stopT);
+    fmCarrier.stop(stopT);
+    fmMod.stop(stopT);
+    hammer.stop(t + 0.03);
+  };
+
+  // Instrument B: Soaring Cantus Lead (Bowed Crystalline Chamber Voice)
+  const playCantusVoice = (t, midi, vel = 0.55, dur = 1.0, pan = 0, octaveDouble = false) => {
+    const freq = midiToFreq(midi);
+    const out = ctx.createGain();
+    const panner = createPanner(pan);
+    out.connect(panner);
+    panner.connect(mixBus);
+
+    const revTap = ctx.createGain();
+    revTap.gain.value = 0.62;
+    panner.connect(revTap);
+    revTap.connect(reverbSend);
+
+    const delTap = ctx.createGain();
+    delTap.gain.value = 0.30;
+    panner.connect(delTap);
+    delTap.connect(delaySend);
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.Q.value = 1.4;
+    const baseCut = Math.min(4800, freq * 2.1);
+    const peakCut = Math.min(9000, freq * 4.8);
+    filter.frequency.setValueAtTime(baseCut, t);
+    filter.frequency.exponentialRampToValueAtTime(peakCut, t + Math.min(0.22, dur * 0.35));
+    filter.frequency.exponentialRampToValueAtTime(Math.max(400, baseCut * 0.85), t + dur + 0.3);
+    filter.connect(out);
+
+    // Expressive vibrato LFO fading in gently
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    lfo.frequency.value = 5.3;
+    lfoGain.gain.setValueAtTime(0.0001, t);
+    lfoGain.gain.linearRampToValueAtTime(freq * 0.0055, t + Math.min(0.32, dur * 0.5));
+    lfo.connect(lfoGain);
+
+    const oscs = [];
+    const detunes = [-5, 5];
+    for (const d of detunes) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(freq, t);
+      o.detune.value = d;
+      lfoGain.connect(o.frequency);
+      const g = ctx.createGain();
+      g.gain.value = 0.34;
+      o.connect(g);
+      g.connect(filter);
+      oscs.push(o);
+    }
+
+    // Pure glass harmonic core
+    const oPure = ctx.createOscillator();
+    oPure.type = 'triangle';
+    oPure.frequency.setValueAtTime(freq, t);
+    lfoGain.connect(oPure.frequency);
+    const gPure = ctx.createGain();
+    gPure.gain.value = 0.55;
+    oPure.connect(gPure);
+    gPure.connect(filter);
+    oscs.push(oPure);
+
+    if (octaveDouble) {
+      const oSub = ctx.createOscillator();
+      oSub.type = 'triangle';
+      oSub.frequency.setValueAtTime(freq * 0.5, t);
+      const gSub = ctx.createGain();
+      gSub.gain.value = 0.42;
+      oSub.connect(gSub);
+      gSub.connect(filter);
+      oscs.push(oSub);
+    }
+
+    const peak = 0.16 * vel;
+    const atk = Math.min(0.11, dur * 0.25);
+    const rel = Math.min(0.65, dur * 0.55 + 0.2);
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.linearRampToValueAtTime(peak, t + atk);
+    out.gain.setValueAtTime(peak * 0.88, t + Math.max(atk + 0.02, dur * 0.78));
+    out.gain.exponentialRampToValueAtTime(0.0001, t + dur + rel);
+
+    const stopT = t + dur + rel + 0.05;
+    lfo.start(t);
+    lfo.stop(stopT);
+    for (const o of oscs) {
+      o.start(t);
+      o.stop(stopT);
+    }
+  };
+
+  // Instrument C: Lush Chamber Strings / Cathedral Organ Pad
+  const playChamberPad = (t, midis, vel = 0.38, dur = 2.0, bright = 1.0) => {
+    const out = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.Q.value = 0.7;
+    const startCut = 340 * bright;
+    const peakCut = Math.min(3400, 1150 * bright);
+    filter.frequency.setValueAtTime(startCut, t);
+    filter.frequency.exponentialRampToValueAtTime(peakCut, t + dur * 0.42);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(260, startCut * 1.1), t + dur + 0.65);
+
+    filter.connect(out);
+    out.connect(mixBus);
+
+    const revTap = ctx.createGain();
+    revTap.gain.value = 0.68;
+    out.connect(revTap);
+    revTap.connect(reverbSend);
+
+    const atk = Math.min(0.45, dur * 0.28);
+    const rel = Math.min(1.15, dur * 0.45 + 0.35);
+    const peak = (0.145 * vel) / Math.sqrt(midis.length);
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.linearRampToValueAtTime(peak, t + atk);
+    out.gain.setValueAtTime(peak * 0.92, t + Math.max(atk + 0.05, dur * 0.82));
+    out.gain.exponentialRampToValueAtTime(0.0001, t + dur + rel);
+
+    const stopT = t + dur + rel + 0.05;
+    midis.forEach((m, idx) => {
+      const f = midiToFreq(m);
+      const spread = midis.length > 1 ? ((idx / (midis.length - 1)) - 0.5) * 0.85 : 0;
+      const p = createPanner(spread);
+      p.connect(filter);
+      for (const det of [-6.5, 6.5]) {
+        const o = ctx.createOscillator();
+        o.type = idx === 0 ? 'triangle' : 'sawtooth';
+        o.frequency.setValueAtTime(f, t);
+        o.detune.value = det + (rand() - 0.5) * 2;
+        const g = ctx.createGain();
+        g.gain.value = idx === 0 ? 0.62 : 0.42;
+        o.connect(g);
+        g.connect(p);
+        o.start(t);
+        o.stop(stopT);
+      }
+    });
+  };
+
+  // Instrument D: Deep Cathedral Organ / Cello Pedal Bass
+  const playPedalBass = (t, midi, vel = 0.65, dur = 2.0) => {
+    const freq = midiToFreq(midi);
+    const out = ctx.createGain();
+    out.connect(mixBus);
+
+    const revTap = ctx.createGain();
+    revTap.gain.value = 0.22;
+    out.connect(revTap);
+    revTap.connect(reverbSend);
+
+    const sub = ctx.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(freq, t);
+
+    const bow = ctx.createOscillator();
+    bow.type = 'sawtooth';
+    bow.frequency.setValueAtTime(freq, t);
+
+    const bow2 = ctx.createOscillator();
+    bow2.type = 'triangle';
+    bow2.frequency.setValueAtTime(freq * 2, t);
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(Math.max(180, freq * 3.8), t);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(120, freq * 2.1), t + dur);
+    lp.Q.value = 0.9;
+
+    const gSub = ctx.createGain();
+    gSub.gain.value = 0.72;
+    const gBow = ctx.createGain();
+    gBow.gain.value = 0.34;
+    const gBow2 = ctx.createGain();
+    gBow2.gain.value = 0.16;
+
+    sub.connect(gSub);
+    gSub.connect(out);
+    bow.connect(gBow);
+    gBow.connect(lp);
+    bow2.connect(gBow2);
+    gBow2.connect(lp);
+    lp.connect(out);
+
+    const atk = Math.min(0.14, dur * 0.18);
+    const rel = Math.min(0.85, dur * 0.4 + 0.25);
+    const peak = 0.27 * vel;
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.linearRampToValueAtTime(peak, t + atk);
+    out.gain.setValueAtTime(peak * 0.85, t + Math.max(atk + 0.05, dur * 0.85));
+    out.gain.exponentialRampToValueAtTime(0.0001, t + dur + rel);
+
+    const stopT = t + dur + rel + 0.05;
+    sub.start(t);
+    bow.start(t);
+    bow2.start(t);
+    sub.stop(stopT);
+    bow.stop(stopT);
+    bow2.stop(stopT);
+  };
+
+  // Instrument E: Horological Astrolabe Percussion (Escapement Tick, Frame Pulse, Celestial Chime)
+  const playClockPerc = (t, kind, vel = 0.4, pan = 0, midi = 86) => {
+    const panner = createPanner(pan);
+    panner.connect(mixBus);
+
+    if (kind === 'tick') {
+      const src = ctx.createBufferSource();
+      src.buffer = noiseBuf;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 3400 + (pan > 0 ? 500 : -350);
+      bp.Q.value = 4.5;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.06 * vel, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.024);
+      src.connect(bp);
+      bp.connect(g);
+      g.connect(panner);
+      src.start(t);
+      src.stop(t + 0.03);
+    } else if (kind === 'pulse') {
+      // Warm muffled orchestral timpani / frame-drum heartbeat
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(118, t);
+      o.frequency.exponentialRampToValueAtTime(52, t + 0.13);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.24 * vel, t + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
+      o.connect(g);
+      g.connect(panner);
+
+      const revTap = ctx.createGain();
+      revTap.gain.value = 0.25;
+      g.connect(revTap);
+      revTap.connect(reverbSend);
+
+      o.start(t);
+      o.stop(t + 0.27);
+    } else if (kind === 'chime') {
+      // Shimmering astrolabe brass bell harmonic
+      const f = midiToFreq(midi);
+      const ratios = [1, 2.756, 5.404];
+      const amps = [0.55, 0.26, 0.1];
+      const decs = [2.2, 1.1, 0.5];
+      const revTap = ctx.createGain();
+      revTap.gain.value = 0.72;
+      panner.connect(revTap);
+      revTap.connect(reverbSend);
+
+      ratios.forEach((r, idx) => {
+        const o = ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(f * r, t);
+        const g = ctx.createGain();
+        const peak = 0.095 * vel * amps[idx];
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(peak, t + 0.004);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + decs[idx]);
+        o.connect(g);
+        g.connect(panner);
+        o.start(t);
+        o.stop(t + decs[idx] + 0.05);
+      });
+    }
+  };
+
+  // =========================================================================
+  // 3. THE COMPOSITION: 8 BARS (32 BEATS @ 128 BPM = 15.000s)
+  //    D Minor Lament -> Contrapuntal Ascension -> Cathedral Climax -> Picardy D Major 9
+  // =========================================================================
+  const events = []; // Stored for frame-locked visual choreography
+  const beatToSec = (b) => b * BEAT;
+  const beatToAudio = (b) => startTime + b * BEAT;
+
+  const logEvent = (beat, voice, midi, vel, durBeats, extra = null) => {
+    events.push({
+      time: beatToSec(beat),
+      beat,
+      voice,
+      midi,
+      pc: ((midi % 12) + 12) % 12,
+      vel,
+      dur: beatToSec(durBeats),
+      extra,
+      triggered: false,
+    });
+  };
+
+  // --- Harmonic Pads & Organ Pedal Bass ---
+  const harmony = [
+    // Act I: Awakening (Baroque Descending Lament Bass: D -> C -> Bb -> A)
+    { b: 0,  dur: 2, bass: [38],     pad: [50, 57, 62, 64, 65], vel: 0.42, bVel: 0.50, bright: 0.78, label: 'Dm9' },
+    { b: 2,  dur: 2, bass: [36],     pad: [48, 57, 62, 65],     vel: 0.44, bVel: 0.52, bright: 0.82, label: 'Dm/C' },
+    { b: 4,  dur: 2, bass: [34, 46], pad: [46, 53, 57, 62],     vel: 0.48, bVel: 0.56, bright: 0.88, label: 'Bbmaj7' },
+    { b: 6,  dur: 1, bass: [33, 45], pad: [45, 52, 57, 62],     vel: 0.50, bVel: 0.58, bright: 0.94, label: 'A7sus4' },
+    { b: 7,  dur: 1, bass: [33],     pad: [45, 52, 55, 61],     vel: 0.54, bVel: 0.56, bright: 1.05, label: 'A7' },
+
+    // Act II: Cantus Ascension
+    { b: 8,  dur: 2, bass: [38, 50], pad: [50, 57, 62, 64, 65], vel: 0.62, bVel: 0.68, bright: 1.05, label: 'Dm9' },
+    { b: 10, dur: 2, bass: [36, 48], pad: [48, 53, 57, 60, 64], vel: 0.65, bVel: 0.70, bright: 1.12, label: 'Fmaj7/C' },
+    { b: 12, dur: 2, bass: [43, 31], pad: [55, 58, 62, 65, 69], vel: 0.72, bVel: 0.74, bright: 1.18, label: 'Gm9' },
+    { b: 14, dur: 2, bass: [33, 45], pad: [45, 52, 55, 61, 64], vel: 0.80, bVel: 0.80, bright: 1.32, label: 'A7b9' },
+
+    // Act III: Cathedral Climax (Deceptive Radiant Lift Bbmaj7 -> C6/9 -> Golden Cadence)
+    { b: 16, dur: 2, bass: [34, 46], pad: [46, 53, 57, 62, 65, 69], vel: 0.92, bVel: 0.92, bright: 1.48, label: 'Bbmaj7' },
+    { b: 18, dur: 2, bass: [36, 48], pad: [48, 55, 60, 62, 64, 69], vel: 0.95, bVel: 0.94, bright: 1.56, label: 'C6/9' },
+    { b: 20, dur: 1, bass: [41],     pad: [53, 57, 62, 65],         vel: 0.88, bVel: 0.86, bright: 1.42, label: 'Dm/F' },
+    { b: 21, dur: 1, bass: [43],     pad: [55, 58, 62, 65, 69],     vel: 0.90, bVel: 0.88, bright: 1.48, label: 'Gm9' },
+    { b: 22, dur: 1, bass: [33, 45], pad: [45, 52, 57, 62, 64],     vel: 0.94, bVel: 0.92, bright: 1.54, label: 'A7sus4' },
+    { b: 23, dur: 1, bass: [33, 45], pad: [45, 52, 55, 61, 64],     vel: 0.98, bVel: 0.95, bright: 1.65, label: 'A7' },
+
+    // Act IV: Picardy Third Transfiguration (Radiant D Major 9)
+    { b: 24, dur: 5.5, bass: [38, 45], pad: [50, 57, 62, 66, 69, 76], vel: 0.96, bVel: 0.90, bright: 1.72, label: 'Dmaj9', picardy: true },
+  ];
+
+  for (const h of harmony) {
+    const t = beatToAudio(h.b);
+    const durSec = beatToSec(h.dur);
+    playChamberPad(t, h.pad, h.vel, durSec, h.bright);
+    h.bass.forEach((bm, idx) => {
+      playPedalBass(t, bm, h.bVel * (idx === 0 ? 1.0 : 0.45), durSec);
+    });
+    logEvent(h.b, 'chord', h.bass[0], h.vel, h.dur, { pad: h.pad, picardy: !!h.picardy, label: h.label });
+  }
+
+  // --- Bachian 16th-Note Harp / Celesta Counterpoint ---
+  const arpPatterns = [
+    // Bar 1 (Beats 0-4)
+    { start: 0,  step: 0.25, vel: 0.56, notes: [50, 57, 62, 65,  64, 62, 65, 69] },
+    { start: 2,  step: 0.25, vel: 0.58, notes: [48, 57, 62, 65,  64, 69, 65, 62] },
+    // Bar 2 (Beats 4-8)
+    { start: 4,  step: 0.25, vel: 0.62, notes: [46, 53, 57, 62,  65, 62, 69, 65] },
+    { start: 6,  step: 0.25, vel: 0.66, notes: [45, 52, 57, 62,  61, 64, 69, 73] },
+    // Bar 3 (Beats 8-12)
+    { start: 8,  step: 0.25, vel: 0.72, notes: [50, 57, 62, 65,  69, 65, 64, 62] },
+    { start: 10, step: 0.25, vel: 0.74, notes: [48, 53, 57, 60,  64, 69, 65, 64] },
+    // Bar 4 (Beats 12-16)
+    { start: 12, step: 0.25, vel: 0.78, notes: [55, 58, 62, 65,  69, 67, 65, 62] },
+    { start: 14, step: 0.25, vel: 0.84, notes: [57, 61, 64, 67,  70, 69, 73, 76] },
+    // Bar 5 (Beats 16-20) — Wide sweeping climax harp
+    { start: 16, step: 0.25, vel: 0.90, notes: [46, 53, 62, 65,  69, 74, 77, 74] },
+    { start: 18, step: 0.25, vel: 0.92, notes: [48, 55, 64, 67,  69, 74, 76, 79] },
+    // Bar 6 (Beats 20-24) — Rapid harmonic drive to Picardy cadence
+    { start: 20, step: 0.25, vel: 0.88, notes: [53, 57, 62, 65] },
+    { start: 21, step: 0.25, vel: 0.90, notes: [55, 58, 62, 69] },
+    { start: 22, step: 0.25, vel: 0.94, notes: [57, 62, 64, 69] },
+    { start: 23, step: 0.25, vel: 0.96, notes: [57, 61, 64, 73] },
+    // Bar 7 (Beats 24-28) — Picardy Third Ascending Sunbeam Cascade (written-in ritardando!)
+    { start: 24, step: 0.25, vel: 0.92, notes: [50, 57, 62, 66,  69, 74, 76, 78] },
+    { start: 26, step: 0.50, vel: 0.78, notes: [81, 86, 88, 90] },
+  ];
+
+  for (const pat of arpPatterns) {
+    pat.notes.forEach((m, i) => {
+      const b = pat.start + i * pat.step;
+      const metricAccent = (i % 4 === 0) ? 1.08 : (i % 2 === 0 ? 0.94 : 0.82);
+      const v = Math.min(1.0, pat.vel * metricAccent);
+      const pan = Math.max(-0.72, Math.min(0.72, (m - 64) / 26));
+      const dur = pat.start >= 24 ? 2.4 : 1.15;
+      // Subtle expressive micro-timing (human breath <= 4ms)
+      const micro = (rand() - 0.5) * 0.004;
+      playHarpCelesta(beatToAudio(b) + Math.max(0, micro), m, v, dur, pan);
+      logEvent(b, 'arp', m, v, pat.step * 2);
+    });
+  }
+
+  // Final radiant tonic rolled harp chord at Beat 28.0 (t = 13.125s)
+  const finalChord = [50, 57, 66, 74, 81];
+  finalChord.forEach((m, i) => {
+    const b = 28.0 + i * 0.048;
+    const pan = (i - 2) * 0.24;
+    playHarpCelesta(beatToAudio(b), m, 0.72 - i * 0.04, 2.5, pan);
+    logEvent(b, 'arp', m, 0.75, 2.0);
+  });
+
+  // --- Soaring Cantus Firmus Melody ---
+  const melody = [
+    // Act II: Entrance
+    { b: 8.0,  dur: 1.5,  midi: 81, vel: 0.72, dbl: false }, // A5
+    { b: 9.5,  dur: 0.5,  midi: 79, vel: 0.64, dbl: false }, // G5
+    { b: 10.0, dur: 1.0,  midi: 77, vel: 0.74, dbl: false }, // F5
+    { b: 11.0, dur: 0.5,  midi: 76, vel: 0.66, dbl: false }, // E5
+    { b: 11.5, dur: 0.5,  midi: 77, vel: 0.70, dbl: false }, // F5
+    { b: 12.0, dur: 1.0,  midi: 79, vel: 0.78, dbl: false }, // G5
+    { b: 13.0, dur: 1.0,  midi: 81, vel: 0.84, dbl: false }, // A5
+    { b: 14.0, dur: 0.75, midi: 82, vel: 0.90, dbl: false }, // Bb5 (tension!)
+    { b: 14.75,dur: 0.75, midi: 81, vel: 0.86, dbl: false }, // A5
+    { b: 15.5, dur: 0.5,  midi: 85, vel: 0.92, dbl: false }, // C#6 (leading tone!)
+
+    // Act III: Cathedral Climax (Octave-doubled!)
+    { b: 16.0, dur: 1.5,  midi: 86, vel: 0.98, dbl: true },  // D6 apex!
+    { b: 17.5, dur: 0.5,  midi: 84, vel: 0.88, dbl: true },  // C6
+    { b: 18.0, dur: 1.0,  midi: 81, vel: 0.92, dbl: true },  // A5
+    { b: 19.0, dur: 1.0,  midi: 79, vel: 0.88, dbl: true },  // G5
+    { b: 20.0, dur: 1.0,  midi: 81, vel: 0.90, dbl: true },  // A5
+    { b: 21.0, dur: 1.0,  midi: 82, vel: 0.94, dbl: true },  // Bb5
+    { b: 22.0, dur: 1.0,  midi: 81, vel: 0.96, dbl: true },  // A5
+    { b: 23.0, dur: 0.5,  midi: 79, vel: 0.90, dbl: false }, // G5
+    { b: 23.5, dur: 0.5,  midi: 76, vel: 0.88, dbl: false }, // E5
+
+    // Act IV: Picardy Third Resolution (F#5 -> E5 -> D5)
+    { b: 24.0, dur: 2.25, midi: 78, vel: 0.98, dbl: true },  // F#5 (Radiant Major 3rd!)
+    { b: 26.25,dur: 1.75, midi: 76, vel: 0.78, dbl: false }, // E5
+    { b: 28.0, dur: 3.2,  midi: 74, vel: 0.74, dbl: false }, // D5 Home
+  ];
+
+  for (const n of melody) {
+    const pan = n.b >= 16 && n.b < 24 ? 0.06 : -0.05;
+    playCantusVoice(beatToAudio(n.b), n.midi, n.vel, beatToSec(n.dur), pan, n.dbl);
+    logEvent(n.b, 'melody', n.midi, n.vel, n.dur);
+  }
+
+  // --- Horological Clockwork Escapement, Heartbeat Timpani & Celestial Chimes ---
+  for (let b = 0; b < 24; b += 0.5) {
+    const actBoost = b < 4 ? 0.35 : (b < 8 ? 0.55 : (b < 16 ? 0.78 : 0.95));
+    const isDown = Math.abs(b % 1) < 0.001;
+    playClockPerc(beatToAudio(b), 'tick', actBoost * (isDown ? 0.95 : 0.55), isDown ? -0.32 : 0.32);
+    if (b >= 8 && b < 24) {
+      // Rhythmic frame-drum heartbeat in Acts II & III
+      const barPos = b % 4;
+      if (barPos === 0 || barPos === 1.5 || barPos === 2 || barPos === 3.5) {
+        const pVel = (barPos === 0 ? 0.92 : 0.62) * (b >= 16 ? 1.0 : 0.72);
+        playClockPerc(beatToAudio(b), 'pulse', pVel, 0);
+        logEvent(b, 'pulse', 38, pVel, 0.4);
+      }
+    }
+  }
+
+  // Sparkling celestial chimes at structural architectural landmarks
+  const chimes = [
+    { b: 7.5,  midi: 76, vel: 0.48, pan: 0.38 },
+    { b: 16.0, midi: 86, vel: 0.78, pan: -0.25 },
+    { b: 24.0, midi: 90, vel: 0.95, pan: 0.0 },   // F#6 Picardy Solar Bell!
+    { b: 28.0, midi: 86, vel: 0.85, pan: 0.0 },   // Final D6 Tonic Bell
+  ];
+  for (const ch of chimes) {
+    playClockPerc(beatToAudio(ch.b), 'chime', ch.vel, ch.pan, ch.midi);
+    logEvent(ch.b, 'chime', ch.midi, ch.vel, 2.0);
+  }
+
+  events.sort((a, b) => a.time - b.time);
+
+  // =========================================================================
+  // 4. VISUAL ENGINE — THE HARMONIC BRASS ASTROLABE (1080 × 1350)
+  // =========================================================================
+  const g = canvas.getContext('2d');
+
+  // Circle of Fifths starting at D (12 o'clock): D, A, E, B, F#, C#, Ab, Eb, Bb, F, C, G
+  const FIFTH_GLYPHS = ['D', 'A', 'E', 'B', 'F♯', 'C♯', 'A♭', 'E♭', 'B♭', 'F', 'C', 'G'];
+  const pcToFifthIndex = (pc) => (((pc - 2) * 7) % 12 + 12) % 12;
+  const fifthAngle = (idx) => -Math.PI / 2 + (idx / 12) * Math.PI * 2;
+  const NODE_RING_R = 306;
+
+  // Offscreen Pre-rendered Archival Celestial Plate & Fine Lithograph Grain
+  const bgCanvas = document.createElement('canvas');
+  bgCanvas.width = W;
+  bgCanvas.height = H;
+  const bg = bgCanvas.getContext('2d');
+
+  // Deep nocturnal celestial gradient
+  const bgGrad = bg.createRadialGradient(CX, CY, 40, CX, CY, 920);
+  bgGrad.addColorStop(0, '#101830');
+  bgGrad.addColorStop(0.45, '#090e1f');
+  bgGrad.addColorStop(1, '#04060d');
+  bg.fillStyle = bgGrad;
+  bg.fillRect(0, 0, W, H);
+
+  // Subtle engraved meridian ellipses & architectural cathedral blueprint lines
+  bg.save();
+  bg.strokeStyle = 'rgba(216, 184, 122, 0.065)';
+  bg.lineWidth = 1;
+  for (let i = 1; i <= 5; i++) {
+    bg.beginPath();
+    bg.ellipse(CX, CY, i * 115, 520, 0, 0, Math.PI * 2);
+    bg.stroke();
+  }
+  for (let r = 130; r <= 560; r += 86) {
+    bg.beginPath();
+    bg.arc(CX, CY, r, 0, Math.PI * 2);
+    bg.stroke();
+  }
+  // Outer engraved museum plate border
+  const pad = 34;
+  bg.strokeStyle = 'rgba(222, 190, 128, 0.24)';
+  bg.lineWidth = 1.5;
+  bg.strokeRect(pad, pad, W - pad * 2, H - pad * 2);
+  bg.strokeStyle = 'rgba(222, 190, 128, 0.11)';
+  bg.lineWidth = 1;
+  bg.strokeRect(pad + 9, pad + 9, W - (pad + 9) * 2, H - (pad + 9) * 2);
+
+  // Corner astronomical rosette arcs
+  const corners = [
+    [pad, pad, 0, Math.PI / 2],
+    [W - pad, pad, Math.PI / 2, Math.PI],
+    [W - pad, H - pad, Math.PI, Math.PI * 1.5],
+    [pad, H - pad, Math.PI * 1.5, Math.PI * 2],
+  ];
+  for (const [cx0, cy0, a0, a1] of corners) {
+    bg.beginPath();
+    bg.strokeStyle = 'rgba(222, 190, 128, 0.28)';
+    bg.lineWidth = 1.25;
+    bg.arc(cx0, cy0, 38, a0, a1);
+    bg.stroke();
+    bg.beginPath();
+    bg.strokeStyle = 'rgba(222, 190, 128, 0.14)';
+    bg.arc(cx0, cy0, 50, a0, a1);
+    bg.stroke();
+  }
+
+  // Vertical meridian spine
+  bg.beginPath();
+  bg.strokeStyle = 'rgba(222, 190, 128, 0.14)';
+  bg.moveTo(CX, 72);
+  bg.lineTo(CX, 1272);
+  bg.stroke();
+  bg.restore();
+
+  // Procedural grain tile (subtle archival print texture)
+  const grainCanvas = document.createElement('canvas');
+  grainCanvas.width = 256;
+  grainCanvas.height = 256;
+  const gCtx = grainCanvas.getContext('2d');
+  const gImg = gCtx.createImageData(256, 256);
+  for (let i = 0; i < gImg.data.length; i += 4) {
+    const v = Math.floor(rand() * 255);
+    gImg.data[i] = v;
+    gImg.data[i + 1] = v;
+    gImg.data[i + 2] = v;
+    gImg.data[i + 3] = 11;
+  }
+  gCtx.putImageData(gImg, 0, 0);
+  const grainPattern = g.createPattern(grainCanvas, 'repeat');
+
+  // Starfield (pre-seeded deterministically)
+  const stars = [];
+  for (let i = 0; i < 320; i++) {
+    const x = 44 + rand() * (W - 88);
+    const y = 44 + rand() * (H - 88);
+    const tint = rand();
+    stars.push({
+      x,
+      y,
+      r: 0.55 + Math.pow(rand(), 2.2) * 1.9,
+      phase: rand() * Math.PI * 2,
+      speed: 1.2 + rand() * 2.8,
+      baseAlpha: 0.18 + rand() * 0.58,
+      color: tint < 0.35 ? '210, 226, 255' : (tint < 0.72 ? '255, 246, 226' : '255, 212, 148'),
+    });
+  }
+
+  // Visual state for live choreography
+  const nodeEnergy = new Float32Array(12);
+  const nodeHue = new Float32Array(12).fill(42);
+  const ribbons = [];     // Contrapuntal silk arcs between consecutive pitch nodes
+  const ripples = [];     // Expanding concentric waves
+  const embers = [];      // Drifting golden starlight particles
+  let activeChordNodes = [0, 9, 1];
+  let chordFlash = 0;
+  let picardyFlare = 0;
+  let lastArpFifth = -1;
+  let lastMelodyFifth = -1;
+  let lastBeatPulse = 0;
+  let nextEventIdx = 0;
+
+  const freqData = new Uint8Array(analyser.frequencyBinCount);
+  const waveData = new Uint8Array(analyser.fftSize);
+  let smoothBass = 0;
+  let smoothMid = 0;
+  let smoothHigh = 0;
+
+  const spawnEmbers = (x, y, count, speed, hue, lifeBase = 1.6) => {
+    for (let i = 0; i < count; i++) {
+      if (embers.length > 260) embers.shift();
+      const ang = rand() * Math.PI * 2;
+      const spd = speed * (0.35 + rand() * 0.9);
+      embers.push({
+        x,
+        y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd - 12,
+        r: 1.1 + rand() * 2.4,
+        hue: hue + (rand() - 0.5) * 20,
+        age: 0,
+        life: lifeBase * (0.65 + rand() * 0.75),
+      });
+    }
+  };
+
+  const getNodePos = (fifthIdx, rotOffset = 0) => {
+    const a = fifthAngle(fifthIdx) + rotOffset;
+    return {
+      x: CX + Math.cos(a) * NODE_RING_R,
+      y: CY + Math.sin(a) * NODE_RING_R,
+      a,
+    };
+  };
+
+  // Process newly arrived musical events for frame-locked visual impulse
+  const consumeEvents = (t, ringRot) => {
+    while (nextEventIdx < events.length && events[nextEventIdx].time <= t) {
+      const ev = events[nextEventIdx++];
+      const fIdx = pcToFifthIndex(ev.pc);
+      const pos = getNodePos(fIdx, ringRot);
+      const isPicardyZone = ev.time >= beatToSec(23.95);
+
+      if (ev.voice === 'arp') {
+        nodeEnergy[fIdx] = Math.min(1.35, nodeEnergy[fIdx] + 0.65 * ev.vel + 0.2);
+        nodeHue[fIdx] = isPicardyZone ? 44 : 38;
+        if (lastArpFifth >= 0 && lastArpFifth !== fIdx) {
+          ribbons.push({
+            from: lastArpFifth,
+            to: fIdx,
+            kind: 'arp',
+            age: 0,
+            life: isPicardyZone ? 3.4 : 2.35,
+            vel: ev.vel,
+            hue: isPicardyZone ? 44 : 38,
+            curve: (rand() - 0.5) * 0.35,
+          });
+        }
+        lastArpFifth = fIdx;
+        ripples.push({
+          x: pos.x,
+          y: pos.y,
+          r: 8,
+          maxR: 52 + ev.vel * 48,
+          age: 0,
+          life: 0.75,
+          hue: isPicardyZone ? 45 : 38,
+          alpha: 0.55 * ev.vel,
+        });
+        spawnEmbers(pos.x, pos.y, 2, 42, isPicardyZone ? 45 : 40, 1.3);
+      } else if (ev.voice === 'melody') {
+        nodeEnergy[fIdx] = Math.min(1.6, nodeEnergy[fIdx] + 1.05);
+        nodeHue[fIdx] = isPicardyZone ? 46 : 26;
+        if (lastMelodyFifth >= 0 && lastMelodyFifth !== fIdx) {
+          ribbons.push({
+            from: lastMelodyFifth,
+            to: fIdx,
+            kind: 'melody',
+            age: 0,
+            life: isPicardyZone ? 3.8 : 2.9,
+            vel: ev.vel,
+            hue: isPicardyZone ? 46 : 24,
+            curve: (rand() - 0.5) * 0.25,
+          });
+        }
+        lastMelodyFifth = fIdx;
+        ripples.push({
+          x: pos.x,
+          y: pos.y,
+          r: 12,
+          maxR: 115 + ev.vel * 65,
+          age: 0,
+          life: 1.25,
+          hue: isPicardyZone ? 46 : 26,
+          alpha: 0.85,
+        });
+        spawnEmbers(pos.x, pos.y, 7, 74, isPicardyZone ? 46 : 28, 1.9);
+      } else if (ev.voice === 'chord') {
+        chordFlash = Math.min(1.2, 0.55 + ev.vel * 0.6);
+        if (ev.extra && ev.extra.pad) {
+          const uniq = new Set(ev.extra.pad.map((m) => pcToFifthIndex(((m % 12) + 12) % 12)));
+          activeChordNodes = Array.from(uniq);
+          for (const idx of activeChordNodes) {
+            nodeEnergy[idx] = Math.min(1.2, nodeEnergy[idx] + 0.45);
+          }
+        }
+        ripples.push({
+          x: CX,
+          y: CY,
+          r: 95,
+          maxR: 465,
+          age: 0,
+          life: 1.45,
+          hue: ev.extra && ev.extra.picardy ? 46 : 218,
+          alpha: ev.extra && ev.extra.picardy ? 0.95 : 0.35 * ev.vel,
+        });
+        if (ev.extra && ev.extra.picardy) {
+          picardyFlare = 1.0;
+          ripples.push({
+            x: CX,
+            y: CY,
+            r: 40,
+            maxR: 760,
+            age: 0,
+            life: 2.4,
+            hue: 45,
+            alpha: 1.0,
+          });
+          spawnEmbers(CX, CY, 58, 165, 45, 2.9);
+        }
+      } else if (ev.voice === 'pulse') {
+        lastBeatPulse = Math.max(lastBeatPulse, ev.vel);
+      } else if (ev.voice === 'chime') {
+        ripples.push({
+          x: pos.x,
+          y: pos.y,
+          r: 10,
+          maxR: 185,
+          age: 0,
+          life: 1.65,
+          hue: 48,
+          alpha: 0.9,
+        });
+        spawnEmbers(pos.x, pos.y, 14, 96, 48, 2.2);
+      }
+    }
+  };
+
+  // Smooth step helper
+  const smoothstep = (a, b, x) => {
+    const u = Math.max(0, Math.min(1, (x - a) / (b - a)));
+    return u * u * (3 - 2 * u);
+  };
+
+  // =========================================================================
+  // 5. MAIN RENDER LOOP
+  // =========================================================================
+  const perfStart = performance.now();
+  let lastT = 0;
+  let rafId = 0;
+
+  const drawFrame = (t) => {
+    const dt = Math.max(0.001, Math.min(0.05, t - lastT));
+    lastT = t;
+
+    const progress = Math.max(0, Math.min(1, t / TOTAL_DUR));
+    const beatNow = t / BEAT;
+    const act = beatNow < 8 ? 0 : (beatNow < 16 ? 1 : (beatNow < 24 ? 2 : 3));
+
+    // Smooth act-driven color & dawn progression
+    const climaxMix = smoothstep(14.5, 17.5, beatNow) * (1 - 0.35 * smoothstep(28.5, 32, beatNow));
+    const picardyMix = smoothstep(23.7, 25.2, beatNow);
+    const endingStillness = smoothstep(28.0, 32.0, beatNow);
+
+    // Subtle rotation of the chromatic ring (horological precision)
+    const ringRot = Math.sin(beatNow * Math.PI / 32) * 0.09;
+    consumeEvents(t, ringRot);
+
+    // Live audio spectral analysis
+    analyser.getByteFrequencyData(freqData);
+    analyser.getByteTimeDomainData(waveData);
+    let bSum = 0, mSum = 0, hSum = 0;
+    for (let i = 1; i < 14; i++) bSum += freqData[i];
+    for (let i = 14; i < 72; i++) mSum += freqData[i];
+    for (let i = 72; i < 200; i++) hSum += freqData[i];
+    const targetBass = bSum / (13 * 255);
+    const targetMid = mSum / (58 * 255);
+    const targetHigh = hSum / (128 * 255);
+    smoothBass += (targetBass - smoothBass) * 0.22;
+    smoothMid += (targetMid - smoothMid) * 0.2;
+    smoothHigh += (targetHigh - smoothHigh) * 0.24;
+
+    // Decay transient states
+    chordFlash *= Math.exp(-dt * 2.4);
+    picardyFlare *= Math.exp(-dt * 1.15);
+    lastBeatPulse *= Math.exp(-dt * 6.5);
+    for (let i = 0; i < 12; i++) {
+      nodeEnergy[i] *= Math.exp(-dt * (picardyMix > 0.5 ? 1.55 : 2.3));
+    }
+
+    // Prepare canvas transform (logical 1080 × 1350)
+    g.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+
+    // --- LAYER 1: Pre-rendered Archival Celestial Plate ---
+    g.drawImage(bgCanvas, 0, 0);
+
+    // --- LAYER 2: Dynamic Atmospheric Cathedral Glow & Volumetric Rays ---
+    const auraR = 480 + smoothBass * 165 + picardyMix * 170 + picardyFlare * 210;
+    const aura = g.createRadialGradient(CX, CY, 15, CX, CY, auraR);
+    const coreH = 222 * (1 - climaxMix) + 34 * climaxMix + 10 * picardyMix;
+    const coreS = 62 + 28 * climaxMix + 8 * picardyMix;
+    const coreL = 22 + 16 * climaxMix + 22 * picardyMix + picardyFlare * 18;
+    aura.addColorStop(0, `hsla(${coreH}, ${coreS}%, ${coreL}%, ${0.38 + smoothBass * 0.28 + picardyMix * 0.28})`);
+    aura.addColorStop(0.42, `hsla(${coreH - 12}, ${coreS * 0.85}%, ${coreL * 0.55}%, ${0.18 + climaxMix * 0.14 + picardyMix * 0.16})`);
+    aura.addColorStop(1, 'rgba(5, 8, 18, 0)');
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    g.fillStyle = aura;
+    g.fillRect(0, 0, W, H);
+
+    // Cathedral rotating volumetric light rays
+    const rayAlpha = (0.045 + smoothMid * 0.08 + climaxMix * 0.08 + picardyMix * 0.13) * (1 - 0.35 * endingStillness);
+    const rayCount = 24;
+    const rayRot = t * 0.045;
+    for (let i = 0; i < rayCount; i++) {
+      const a = rayRot + (i / rayCount) * Math.PI * 2;
+      const spread = 0.032 + (i % 3 === 0 ? 0.025 : 0);
+      const len = 430 + ((i * 73) % 210) + smoothBass * 120 + picardyMix * 160;
+      const rg = g.createLinearGradient(CX, CY, CX + Math.cos(a) * len, CY + Math.sin(a) * len);
+      const rHue = picardyMix > 0.35 ? 43 : (climaxMix > 0.3 ? 34 : 216);
+      rg.addColorStop(0, `hsla(${rHue}, 82%, 72%, ${rayAlpha * (i % 2 === 0 ? 1.15 : 0.6)})`);
+      rg.addColorStop(1, `hsla(${rHue}, 82%, 72%, 0)`);
+      g.beginPath();
+      g.moveTo(CX, CY);
+      g.arc(CX, CY, len, a - spread, a + spread);
+      g.closePath();
+      g.fillStyle = rg;
+      g.fill();
+    }
+    g.restore();
+
+    // --- LAYER 3: Twinkling Starfield ---
+    for (const s of stars) {
+      const tw = 0.6 + 0.4 * Math.sin(t * s.speed + s.phase);
+      const a = s.baseAlpha * tw * (0.75 + smoothHigh * 0.55 + picardyMix * 0.25);
+      g.fillStyle = `rgba(${s.color}, ${Math.min(1, a)})`;
+      g.beginPath();
+      g.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      g.fill();
+    }
+
+    // --- LAYER 4: Upper Zenith Eclipse -> Solar Dawn Dial (y = 132) ---
+    {
+      const zx = CX;
+      const zy = 128;
+      const zr = 38;
+      const eclipseClear = smoothstep(2.0, 25.0, beatNow); // 0 = crescent nocturne -> 1 = full golden sun!
+
+      g.save();
+      // Subtle dial bezel
+      g.strokeStyle = `rgba(232, 200, 138, ${0.26 + picardyMix * 0.35})`;
+      g.lineWidth = 1.2;
+      g.beginPath();
+      g.arc(zx, zy, zr + 16, 0, Math.PI * 2);
+      g.stroke();
+
+      // Sunbeam needles blooming in Acts III & IV
+      const needleLen = 16 + picardyMix * 26 + climaxMix * 10;
+      g.strokeStyle = `rgba(255, 224, 152, ${0.14 + climaxMix * 0.22 + picardyMix * 0.45})`;
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2 + t * 0.08;
+        const inner = zr + 18;
+        const outer = inner + (i % 2 === 0 ? needleLen : needleLen * 0.52);
+        g.beginPath();
+        g.moveTo(zx + Math.cos(a) * inner, zy + Math.sin(a) * inner);
+        g.lineTo(zx + Math.cos(a) * outer, zy + Math.sin(a) * outer);
+        g.stroke();
+      }
+
+      // Luminous orb
+      const orbGrad = g.createRadialGradient(zx - 6, zy - 6, 4, zx, zy, zr + 12);
+      if (picardyMix > 0.2) {
+        orbGrad.addColorStop(0, '#fff9e6');
+        orbGrad.addColorStop(0.55, '#f6ca6e');
+        orbGrad.addColorStop(1, 'rgba(246, 188, 86, 0)');
+      } else {
+        orbGrad.addColorStop(0, '#eef4ff');
+        orbGrad.addColorStop(0.6, '#d9bf8e');
+        orbGrad.addColorStop(1, 'rgba(180, 195, 235, 0)');
+      }
+      g.fillStyle = orbGrad;
+      g.beginPath();
+      g.arc(zx, zy, zr, 0, Math.PI * 2);
+      g.fill();
+
+      // Lunar eclipse shadow gliding away toward dawn
+      if (eclipseClear < 0.99) {
+        const shadowOffset = 10 + eclipseClear * (zr * 2.15);
+        g.fillStyle = '#090e1f';
+        g.beginPath();
+        g.arc(zx - shadowOffset, zy - 2, zr * 0.96, 0, Math.PI * 2);
+        g.fill();
+      }
+
+      // Flanking Roman numeral act indicators (I · II · III · IV)
+      const acts = ['I', 'II', 'III', 'IV'];
+      const actXs = [CX - 225, CX - 135, CX + 135, CX + 225];
+      g.font = '500 17px Georgia, "Times New Roman", serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      acts.forEach((rom, idx) => {
+        const active = idx === act;
+        const passed = idx < act;
+        g.fillStyle = active
+          ? (picardyMix > 0.3 ? 'rgba(255, 238, 182, 0.96)' : 'rgba(248, 224, 168, 0.95)')
+          : (passed ? 'rgba(222, 194, 140, 0.48)' : 'rgba(195, 178, 150, 0.26)');
+        g.fillText(rom, actXs[idx], zy);
+        if (active) {
+          g.fillStyle = 'rgba(255, 226, 154, 0.92)';
+          g.beginPath();
+          g.arc(actXs[idx], zy + 17, 2.6, 0, Math.PI * 2);
+          g.fill();
+        }
+      });
+      g.restore();
+    }
+
+    // --- LAYER 5: THE HARMONIC BRASS ASTROLABE ---
+    g.save();
+
+    // 5A. Live Spectral Corona around outer bezel (r = 428)
+    const bezelR = 420;
+    const coronaBins = 120;
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < coronaBins; i++) {
+      const mirrorIdx = i < coronaBins / 2 ? i : coronaBins - 1 - i;
+      const bin = Math.floor(2 + (mirrorIdx / (coronaBins / 2)) * 96);
+      const val = (freqData[bin] || 0) / 255;
+      const a = -Math.PI / 2 + (i / coronaBins) * Math.PI * 2 + t * 0.015;
+      const len = 6 + Math.pow(val, 1.35) * (54 + climaxMix * 24 + picardyMix * 22);
+      const cHue = picardyMix > 0.4 ? 44 : (210 * (1 - val) + 38 * val);
+      g.strokeStyle = `hsla(${cHue}, 82%, 72%, ${0.14 + val * 0.56})`;
+      g.lineWidth = val > 0.45 ? 2.1 : 1.25;
+      g.beginPath();
+      g.moveTo(CX + Math.cos(a) * (bezelR + 6), CY + Math.sin(a) * (bezelR + 6));
+      g.lineTo(CX + Math.cos(a) * (bezelR + 6 + len), CY + Math.sin(a) * (bezelR + 6 + len));
+      g.stroke();
+    }
+    g.restore();
+
+    // 5B. Outer Engraved Brass Azimuth Rings
+    const outerRot = t * 0.032;
+    g.strokeStyle = `rgba(232, 198, 134, ${0.46 + picardyMix * 0.25})`;
+    g.lineWidth = 2.2;
+    g.beginPath();
+    g.arc(CX, CY, bezelR, 0, Math.PI * 2);
+    g.stroke();
+
+    g.strokeStyle = `rgba(232, 198, 134, ${0.22 + picardyMix * 0.18})`;
+    g.lineWidth = 1.1;
+    g.beginPath();
+    g.arc(CX, CY, bezelR - 18, 0, Math.PI * 2);
+    g.stroke();
+
+    // Precision degree ticks around bezel
+    for (let deg = 0; deg < 360; deg += 3) {
+      const a = outerRot + (deg * Math.PI) / 180;
+      const major = deg % 30 === 0;
+      const med = deg % 15 === 0;
+      const rIn = bezelR - (major ? 18 : (med ? 12 : 7));
+      g.strokeStyle = major
+        ? `rgba(250, 224, 162, ${0.65 + picardyMix * 0.25})`
+        : 'rgba(222, 190, 128, 0.24)';
+      g.lineWidth = major ? 1.8 : 0.9;
+      g.beginPath();
+      g.moveTo(CX + Math.cos(a) * rIn, CY + Math.sin(a) * rIn);
+      g.lineTo(CX + Math.cos(a) * bezelR, CY + Math.sin(a) * bezelR);
+      g.stroke();
+    }
+
+    // 5C. Rotating Eccentric Astrolabe Rete (Ecliptic Ring & Pointer Flames)
+    g.save();
+    const reteAngle = beatNow * (Math.PI / 16) - Math.PI * 0.25;
+    const eclOffset = 58;
+    const ex = CX + Math.cos(reteAngle) * eclOffset;
+    const ey = CY + Math.sin(reteAngle) * eclOffset;
+    const eclR = 204;
+
+    g.strokeStyle = `rgba(235, 198, 128, ${0.32 + climaxMix * 0.16 + picardyMix * 0.24})`;
+    g.lineWidth = 2.0;
+    g.beginPath();
+    g.arc(ex, ey, eclR, 0, Math.PI * 2);
+    g.stroke();
+
+    g.strokeStyle = `rgba(235, 198, 128, ${0.14 + picardyMix * 0.14})`;
+    g.lineWidth = 1.0;
+    g.beginPath();
+    g.arc(ex, ey, eclR - 11, 0, Math.PI * 2);
+    g.stroke();
+
+    // 12 ecliptic tick divisions & 4 curved horological pointer arcs
+    for (let i = 0; i < 12; i++) {
+      const a = reteAngle + (i / 12) * Math.PI * 2;
+      g.strokeStyle = 'rgba(240, 206, 138, 0.34)';
+      g.lineWidth = 1.1;
+      g.beginPath();
+      g.moveTo(ex + Math.cos(a) * (eclR - 11), ey + Math.sin(a) * (eclR - 11));
+      g.lineTo(ex + Math.cos(a) * eclR, ey + Math.sin(a) * eclR);
+      g.stroke();
+    }
+
+    // Counter-rotating horological alidade (brass sighting rule across the astrolabe)
+    const alidadeAngle = -beatNow * (Math.PI / 32) + Math.PI / 6;
+    g.strokeStyle = `rgba(235, 204, 144, ${0.22 + picardyMix * 0.2})`;
+    g.lineWidth = 1.3;
+    g.beginPath();
+    g.moveTo(CX + Math.cos(alidadeAngle) * 392, CY + Math.sin(alidadeAngle) * 392);
+    g.lineTo(CX - Math.cos(alidadeAngle) * 392, CY - Math.sin(alidadeAngle) * 392);
+    g.stroke();
+    g.restore();
+
+    // 5D. Stained-Glass Active Harmony Polygon inside the 12-Tone Circle
+    if (activeChordNodes.length >= 3) {
+      const sorted = [...activeChordNodes].sort((a, b) => a - b);
+      g.save();
+      g.globalCompositeOperation = 'lighter';
+      g.beginPath();
+      sorted.forEach((idx, i) => {
+        const p = getNodePos(idx, ringRot);
+        if (i === 0) g.moveTo(p.x, p.y);
+        else g.lineTo(p.x, p.y);
+      });
+      g.closePath();
+      const polyHue = picardyMix > 0.4 ? 44 : (climaxMix > 0.4 ? 32 : 216);
+      const polyAlpha = 0.055 + chordFlash * 0.08 + smoothMid * 0.05 + picardyMix * 0.06;
+      g.fillStyle = `hsla(${polyHue}, 75%, 60%, ${polyAlpha})`;
+      g.fill();
+      g.strokeStyle = `hsla(${polyHue}, 82%, 74%, ${0.18 + chordFlash * 0.3})`;
+      g.lineWidth = 1.3;
+      g.stroke();
+      g.restore();
+    }
+
+    // 5E. Contrapuntal Silk Web (Live Bach Counterpoint Arcs!)
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    for (let i = ribbons.length - 1; i >= 0; i--) {
+      const rb = ribbons[i];
+      rb.age += dt;
+      if (rb.age >= rb.life) {
+        ribbons.splice(i, 1);
+        continue;
+      }
+      const u = rb.age / rb.life;
+      const fade = Math.pow(1 - u, 1.55);
+      const drawProg = Math.min(1, rb.age / 0.14); // Rapid calligraphic stroke draw-in
+
+      const p1 = getNodePos(rb.from, ringRot);
+      const p2 = getNodePos(rb.to, ringRot);
+      // Control point pulled gracefully toward the astrolabe's gravitational heart
+      const mx = (p1.x + p2.x) * 0.5;
+      const my = (p1.y + p2.y) * 0.5;
+      const pull = rb.kind === 'melody' ? 0.52 : 0.66;
+      const cpx = CX + (mx - CX) * (1 - pull) + (p2.y - p1.y) * rb.curve * 0.22;
+      const cpy = CY + (my - CY) * (1 - pull) - (p2.x - p1.x) * rb.curve * 0.22;
+
+      // Partial quadratic bezier point for head spark
+      const qx = (1 - drawProg) * (1 - drawProg) * p1.x + 2 * (1 - drawProg) * drawProg * cpx + drawProg * drawProg * p2.x;
+      const qy = (1 - drawProg) * (1 - drawProg) * p1.y + 2 * (1 - drawProg) * drawProg * cpy + drawProg * drawProg * p2.y;
+
+      const isMel = rb.kind === 'melody';
+      const baseAlpha = fade * (isMel ? 0.88 : 0.62) * (0.65 + rb.vel * 0.45);
+
+      // Outer soft optical glow stroke
+      g.beginPath();
+      g.moveTo(p1.x, p1.y);
+      g.quadraticCurveTo(cpx, cpy, qx, qy);
+      g.strokeStyle = `hsla(${rb.hue}, 88%, 68%, ${baseAlpha * 0.26})`;
+      g.lineWidth = isMel ? 11 : 5.5;
+      g.lineCap = 'round';
+      g.stroke();
+
+      // Inner crisp incandescent filament
+      g.beginPath();
+      g.moveTo(p1.x, p1.y);
+      g.quadraticCurveTo(cpx, cpy, qx, qy);
+      g.strokeStyle = `hsla(${rb.hue + 6}, 95%, 86%, ${baseAlpha})`;
+      g.lineWidth = isMel ? 2.6 : 1.35;
+      g.stroke();
+
+      // Travelling light bead along the arc
+      if (u < 0.35) {
+        const bT = Math.min(1, u / 0.28);
+        const bx = (1 - bT) * (1 - bT) * p1.x + 2 * (1 - bT) * bT * cpx + bT * bT * p2.x;
+        const by = (1 - bT) * (1 - bT) * p1.y + 2 * (1 - bT) * bT * cpy + bT * bT * p2.y;
+        g.fillStyle = `hsla(${rb.hue + 10}, 100%, 94%, ${(1 - bT) * 0.95})`;
+        g.beginPath();
+        g.arc(bx, by, isMel ? 4.4 : 2.6, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+    g.restore();
+
+    // 5F. 12-Tone Circle of Fifths Jeweled Nodes
+    g.strokeStyle = `rgba(228, 194, 130, ${0.26 + picardyMix * 0.22})`;
+    g.lineWidth = 1.2;
+    g.beginPath();
+    g.arc(CX, CY, NODE_RING_R, 0, Math.PI * 2);
+    g.stroke();
+
+    for (let i = 0; i < 12; i++) {
+      const p = getNodePos(i, ringRot);
+      const en = nodeEnergy[i];
+      const hue = nodeHue[i];
+      const inChord = activeChordNodes.includes(i);
+
+      // Luminous aura on active pitch node
+      if (en > 0.03 || inChord) {
+        const glowR = 16 + en * 38 + (inChord ? 10 : 0);
+        const ng = g.createRadialGradient(p.x, p.y, 2, p.x, p.y, glowR);
+        ng.addColorStop(0, `hsla(${hue + 8}, 100%, 92%, ${Math.min(0.95, 0.18 + en * 0.72)})`);
+        ng.addColorStop(0.45, `hsla(${hue}, 88%, 62%, ${Math.min(0.65, 0.08 + en * 0.42)})`);
+        ng.addColorStop(1, `hsla(${hue}, 88%, 62%, 0)`);
+        g.save();
+        g.globalCompositeOperation = 'lighter';
+        g.fillStyle = ng;
+        g.beginPath();
+        g.arc(p.x, p.y, glowR, 0, Math.PI * 2);
+        g.fill();
+        g.restore();
+      }
+
+      // Brass jewel socket
+      g.fillStyle = '#0a0f20';
+      g.beginPath();
+      g.arc(p.x, p.y, 11.5, 0, Math.PI * 2);
+      g.fill();
+
+      g.strokeStyle = en > 0.08
+        ? `hsla(${hue + 6}, 95%, 82%, ${0.55 + Math.min(0.45, en * 0.45)})`
+        : `rgba(222, 190, 128, ${inChord ? 0.58 : 0.3})`;
+      g.lineWidth = en > 0.08 ? 2.0 : 1.25;
+      g.stroke();
+
+      // Inner jewel core
+      g.fillStyle = en > 0.05
+        ? `hsla(${hue + 10}, 100%, ${74 + Math.min(24, en * 22)}%, ${Math.min(1, 0.45 + en * 0.6)})`
+        : (inChord ? 'rgba(232, 202, 144, 0.52)' : 'rgba(182, 165, 134, 0.25)');
+      g.beginPath();
+      g.arc(p.x, p.y, 4.2 + Math.min(4.2, en * 3.8), 0, Math.PI * 2);
+      g.fill();
+
+      // Engraved Pitch-Class Glyph outside the ring
+      const gx = CX + Math.cos(p.a) * (NODE_RING_R + 34);
+      const gy = CY + Math.sin(p.a) * (NODE_RING_R + 34);
+      g.font = `${en > 0.2 ? '600' : '400'} 19px Georgia, "Times New Roman", serif`;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillStyle = en > 0.08
+        ? `hsla(${hue + 10}, 98%, 90%, ${0.65 + Math.min(0.35, en * 0.35)})`
+        : `rgba(224, 198, 150, ${inChord ? 0.65 : 0.36})`;
+      g.fillText(FIFTH_GLYPHS[i], gx, gy);
+    }
+
+    // 5G. Inner Horological Escapement Gear & Living Polar Waveform Iris
+    {
+      const gearR = 114;
+      // Subtle mechanical detent tick step synced to 8th notes
+      const tickIdx = Math.floor(beatNow * 2);
+      const tickFrac = (beatNow * 2) - tickIdx;
+      const smoothDetent = tickIdx + smoothstep(0, 0.35, tickFrac);
+      const gearRot = smoothDetent * (Math.PI / 24);
+
+      g.save();
+      g.translate(CX, CY);
+      g.rotate(gearRot);
+      g.strokeStyle = `rgba(236, 202, 136, ${0.42 + picardyMix * 0.28})`;
+      g.lineWidth = 1.5;
+      g.beginPath();
+      const teeth = 36;
+      for (let i = 0; i < teeth; i++) {
+        const a0 = (i / teeth) * Math.PI * 2;
+        const a1 = ((i + 0.35) / teeth) * Math.PI * 2;
+        const a2 = ((i + 0.5) / teeth) * Math.PI * 2;
+        const a3 = ((i + 0.85) / teeth) * Math.PI * 2;
+        const rIn = gearR - 6;
+        const rOut = gearR + 5;
+        if (i === 0) g.moveTo(Math.cos(a0) * rIn, Math.sin(a0) * rIn);
+        else g.lineTo(Math.cos(a0) * rIn, Math.sin(a0) * rIn);
+        g.lineTo(Math.cos(a1) * rOut, Math.sin(a1) * rOut);
+        g.lineTo(Math.cos(a2) * rOut, Math.sin(a2) * rOut);
+        g.lineTo(Math.cos(a3) * rIn, Math.sin(a3) * rIn);
+      }
+      g.closePath();
+      g.stroke();
+
+      // Delicate 6-spoke brass gear bridge
+      g.strokeStyle = 'rgba(226, 192, 128, 0.22)';
+      g.lineWidth = 1.3;
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        g.beginPath();
+        g.moveTo(Math.cos(a) * 28, Math.sin(a) * 28);
+        g.lineTo(Math.cos(a) * (gearR - 8), Math.sin(a) * (gearR - 8));
+        g.stroke();
+      }
+      g.restore();
+
+      // Living Polar Audio Oscilloscope inside the Crystal Iris (r = 72)
+      g.save();
+      g.globalCompositeOperation = 'lighter';
+      const irisBaseR = 66 + smoothBass * 18 + lastBeatPulse * 8;
+      const samples = 160;
+      const irisHue = picardyMix > 0.35 ? 45 : (climaxMix > 0.3 ? 34 : 42);
+
+      for (let layer = 0; layer < 2; layer++) {
+        g.beginPath();
+        for (let i = 0; i <= samples; i++) {
+          const idx = Math.floor(((i % samples) / samples) * (waveData.length - 1));
+          const w = (waveData[idx] - 128) / 128;
+          const a = (i / samples) * Math.PI * 2 - Math.PI / 2;
+          const harmonicPetal = Math.sin(a * 6 + t * 1.4) * (3.5 + smoothMid * 8);
+          const r = irisBaseR + w * (42 + climaxMix * 24) * (layer === 0 ? 1 : -0.65) + harmonicPetal;
+          const x = CX + Math.cos(a) * r;
+          const y = CY + Math.sin(a) * r;
+          if (i === 0) g.moveTo(x, y);
+          else g.lineTo(x, y);
+        }
+        g.closePath();
+        g.strokeStyle = `hsla(${irisHue + layer * 8}, 92%, ${layer === 0 ? 80 : 66}%, ${layer === 0 ? 0.78 : 0.36})`;
+        g.lineWidth = layer === 0 ? 2.1 : 4.2;
+        g.stroke();
+      }
+
+      // Central solar jewel core
+      const coreR = 24 + smoothBass * 14 + picardyFlare * 28;
+      const cg = g.createRadialGradient(CX, CY, 1, CX, CY, coreR * 1.8);
+      cg.addColorStop(0, `hsla(${irisHue + 10}, 100%, 96%, ${0.85 + picardyMix * 0.15})`);
+      cg.addColorStop(0.45, `hsla(${irisHue}, 92%, 68%, ${0.42 + smoothBass * 0.3 + picardyMix * 0.25})`);
+      cg.addColorStop(1, `hsla(${irisHue}, 92%, 62%, 0)`);
+      g.fillStyle = cg;
+      g.beginPath();
+      g.arc(CX, CY, coreR * 1.8, 0, Math.PI * 2);
+      g.fill();
+      g.restore();
+    }
+
+    g.restore(); // end Astrolabe
+
+    // --- LAYER 6: Expanding Harmonic Ripples & Gravitational Shockwaves ---
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      const rp = ripples[i];
+      rp.age += dt;
+      if (rp.age >= rp.life) {
+        ripples.splice(i, 1);
+        continue;
+      }
+      const u = rp.age / rp.life;
+      const ease = 1 - Math.pow(1 - u, 2.4);
+      const r = rp.r + (rp.maxR - rp.r) * ease;
+      const alpha = rp.alpha * Math.pow(1 - u, 1.8);
+      g.strokeStyle = `hsla(${rp.hue}, 90%, 78%, ${alpha})`;
+      g.lineWidth = 2.4 * (1 - u * 0.65);
+      g.beginPath();
+      g.arc(rp.x, rp.y, r, 0, Math.PI * 2);
+      g.stroke();
+    }
+    g.restore();
+
+    // --- LAYER 7: Swirling Celestial Embers ---
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    for (let i = embers.length - 1; i >= 0; i--) {
+      const em = embers[i];
+      em.age += dt;
+      if (em.age >= em.life) {
+        embers.splice(i, 1);
+        continue;
+      }
+      const dx = em.x - CX;
+      const dy = em.y - CY;
+      const dist = Math.hypot(dx, dy) + 1;
+      // Gentle orbital swirl + upward transfiguration drift in Act IV
+      const swirl = 28 / Math.max(80, dist);
+      em.vx += (-dy * swirl - em.vx * 0.85) * dt;
+      em.vy += (dx * swirl - (18 + picardyMix * 48) - em.vy * 0.85) * dt;
+      em.x += em.vx * dt;
+      em.y += em.vy * dt;
+
+      const u = em.age / em.life;
+      const alpha = Math.sin(u * Math.PI) * 0.92;
+      g.fillStyle = `hsla(${em.hue}, 96%, 84%, ${alpha})`;
+      g.beginPath();
+      g.arc(em.x, em.y, em.r * (1 - u * 0.4), 0, Math.PI * 2);
+      g.fill();
+    }
+    g.restore();
+
+    // --- LAYER 8: Lower Contrapuntal Ribbon Oscilloscope & Progress Filament ---
+    {
+      const boxW = 836;
+      const boxH = 112;
+      const bx = CX - boxW / 2;
+      const by = 1118;
+      const midY = by + boxH / 2;
+
+      // Delicate engraved cartouche frame
+      g.save();
+      g.strokeStyle = `rgba(226, 194, 134, ${0.22 + picardyMix * 0.2})`;
+      g.lineWidth = 1.15;
+      g.strokeRect(bx, by, boxW, boxH);
+
+      // Center hairline axis
+      g.strokeStyle = 'rgba(226, 194, 134, 0.12)';
+      g.beginPath();
+      g.moveTo(bx + 18, midY);
+      g.lineTo(bx + boxW - 18, midY);
+      g.stroke();
+
+      // Corner brass diamonds on the cartouche
+      const cPts = [[bx, by], [bx + boxW, by], [bx, by + boxH], [bx + boxW, by + boxH]];
+      g.fillStyle = 'rgba(242, 212, 152, 0.65)';
+      for (const [px, py] of cPts) {
+        g.beginPath();
+        g.moveTo(px, py - 4);
+        g.lineTo(px + 4, py);
+        g.lineTo(px, py + 4);
+        g.lineTo(px - 4, py);
+        g.closePath();
+        g.fill();
+      }
+
+      // Live dual-voice luminous ribbon waveform
+      g.globalCompositeOperation = 'lighter';
+      const pts = 180;
+      const waveHue = picardyMix > 0.35 ? 45 : (climaxMix > 0.35 ? 32 : 212);
+      for (let pass = 0; pass < 3; pass++) {
+        g.beginPath();
+        for (let i = 0; i <= pts; i++) {
+          const frac = i / pts;
+          const x = bx + 20 + frac * (boxW - 40);
+          const env = Math.sin(frac * Math.PI); // Smooth tapered ends
+          const idx = Math.floor(frac * (waveData.length - 1));
+          const sample = (waveData[idx] - 128) / 128;
+          const counterSine = Math.sin(frac * Math.PI * 6 + t * 3.2) * (0.14 + smoothMid * 0.25);
+          const amp = (pass === 2 ? -0.6 : 1.0) * (sample * 56 + counterSine * 18) * env;
+          const y = midY + amp;
+          if (i === 0) g.moveTo(x, y);
+          else g.lineTo(x, y);
+        }
+        if (pass === 0) {
+          g.strokeStyle = `hsla(${waveHue}, 88%, 68%, 0.22)`;
+          g.lineWidth = 8.0;
+        } else if (pass === 1) {
+          g.strokeStyle = `hsla(${waveHue + 12}, 96%, 86%, 0.85)`;
+          g.lineWidth = 1.9;
+        } else {
+          g.strokeStyle = `hsla(42, 90%, 76%, 0.42)`;
+          g.lineWidth = 1.25;
+        }
+        g.stroke();
+      }
+      g.restore();
+
+      // Temporal Progress Filament beneath cartouche
+      const py = 1254;
+      const px0 = bx;
+      const px1 = bx + boxW;
+      g.save();
+      g.strokeStyle = 'rgba(222, 190, 128, 0.2)';
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.moveTo(px0, py);
+      g.lineTo(px1, py);
+      g.stroke();
+
+      const curX = px0 + boxW * progress;
+      const pg = g.createLinearGradient(px0, py, curX, py);
+      pg.addColorStop(0, 'rgba(182, 198, 240, 0.55)');
+      pg.addColorStop(0.7, 'rgba(246, 206, 128, 0.88)');
+      pg.addColorStop(1, 'rgba(255, 244, 204, 1.0)');
+      g.strokeStyle = pg;
+      g.lineWidth = 2.4;
+      g.beginPath();
+      g.moveTo(px0, py);
+      g.lineTo(curX, py);
+      g.stroke();
+
+      // 4 Act landmark ticks along progress bar
+      for (let i = 0; i <= 4; i++) {
+        const mx = px0 + (boxW * i) / 4;
+        const lit = progress >= i / 4;
+        g.fillStyle = lit ? 'rgba(255, 232, 170, 0.92)' : 'rgba(218, 190, 134, 0.28)';
+        g.beginPath();
+        g.arc(mx, py, i === 3 ? 3.5 : 2.3, 0, Math.PI * 2);
+        g.fill();
+      }
+
+      // Glowing progress cursor diamond
+      g.fillStyle = '#fff5d6';
+      g.beginPath();
+      g.moveTo(curX, py - 5);
+      g.lineTo(curX + 5, py);
+      g.lineTo(curX, py + 5);
+      g.lineTo(curX - 5, py);
+      g.closePath();
+      g.fill();
+
+      // Museum-grade engraved title inscription
+      g.font = '400 15px Georgia, "Times New Roman", serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillStyle = `rgba(232, 208, 162, ${0.42 + picardyMix * 0.26})`;
+      g.fillText('N O C T U R N E   O F   T H E   B R A S S   A S T R O L A B E', CX, 1292);
+      g.restore();
+    }
+
+    // --- LAYER 9: Picardy Third Solar Wash & Subtle Lithograph Grain ---
+    if (picardyFlare > 0.01) {
+      g.save();
+      g.globalCompositeOperation = 'lighter';
+      const sg = g.createRadialGradient(CX, CY, 10, CX, CY, 740);
+      sg.addColorStop(0, `rgba(255, 244, 206, ${picardyFlare * 0.42})`);
+      sg.addColorStop(0.5, `rgba(252, 204, 114, ${picardyFlare * 0.2})`);
+      sg.addColorStop(1, 'rgba(252, 204, 114, 0)');
+      g.fillStyle = sg;
+      g.fillRect(0, 0, W, H);
+      g.restore();
+    }
+
+    if (grainPattern) {
+      g.save();
+      g.fillStyle = grainPattern;
+      g.fillRect(0, 0, W, H);
+      g.restore();
+    }
+
+    // Gentle fade-in from twilight at start (0.0 -> 0.45s)
+    if (t < 0.45) {
+      g.fillStyle = `rgba(4, 6, 13, ${1 - smoothstep(0, 0.45, t)})`;
+      g.fillRect(0, 0, W, H);
+    }
+  };
+
+  // Frame-accurate audio-locked animation clock
+  const loop = () => {
+    const audioElapsed = ctx.currentTime - startTime;
+    const perfElapsed = (performance.now() - perfStart) / 1000 - 0.045;
+    const t = Math.max(0, audioElapsed > -0.02 ? audioElapsed : perfElapsed);
+    drawFrame(Math.min(TOTAL_DUR, t));
+    if (t < TOTAL_DUR + 0.25) {
+      rafId = requestAnimationFrame(loop);
+    }
+  };
+
+  // Render initial frame immediately and begin animation loop
+  drawFrame(0);
+  rafId = requestAnimationFrame(loop);
+
+  return () => {
+    if (rafId) cancelAnimationFrame(rafId);
+  };
+}
+```

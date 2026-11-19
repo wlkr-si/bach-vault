@@ -1,0 +1,397 @@
+export const title = "Glass Cartography";
+
+export function start({ audioContext, canvas, duration, random }) {
+  const audio = audioContext;
+  const D = Math.max(0.1, Number(duration) || 15);
+  const W = 1080;
+  const H = 1350;
+  canvas.width = W;
+  canvas.height = H;
+
+  const rnd = typeof random === "function" ? random : () => 0.5;
+  const midi = n => 440 * Math.pow(2, (n - 69) / 12);
+  const beatTime = 60 / 96;
+  const eighth = beatTime / 2;
+  const t0 = audio.currentTime + 0.08;
+
+  const master = audio.createGain();
+  const compressor = audio.createDynamicsCompressor();
+  const analyser = audio.createAnalyser();
+  const delay = audio.createDelay(1);
+  const feedback = audio.createGain();
+  const delayMix = audio.createGain();
+
+  master.gain.setValueAtTime(0, t0);
+  master.gain.linearRampToValueAtTime(0.72, t0 + 0.35);
+  master.gain.setValueAtTime(0.72, t0 + Math.max(0.4, D - 0.3));
+  master.gain.linearRampToValueAtTime(0.0001, t0 + D);
+
+  compressor.threshold.value = -18;
+  compressor.knee.value = 14;
+  compressor.ratio.value = 5;
+  compressor.attack.value = 0.008;
+  compressor.release.value = 0.18;
+
+  analyser.fftSize = 256;
+  analyser.smoothingTimeConstant = 0.78;
+
+  delay.delayTime.value = 0.265;
+  feedback.gain.value = 0.29;
+  delayMix.gain.value = 0.24;
+
+  delay.connect(feedback);
+  feedback.connect(delay);
+  delay.connect(delayMix);
+  delayMix.connect(master);
+  master.connect(compressor);
+  compressor.connect(analyser);
+  analyser.connect(audio.destination);
+
+  const noise = audio.createBuffer(
+    1,
+    Math.ceil(audio.sampleRate * 1.2),
+    audio.sampleRate
+  );
+  const noiseData = noise.getChannelData(0);
+  let noiseState = 0.173;
+  for (let i = 0; i < noiseData.length; i++) {
+    noiseState = (noiseState * 16807) % 2147483647;
+    noiseData[i] = (noiseState / 1073741823.5) - 1;
+  }
+
+  function panValue(i) {
+    return Math.sin(i * 1.731) * 0.72;
+  }
+
+  function voice(freq, time, length, amp, type, pan, cutoff, bus = master) {
+    if (time >= t0 + D + 0.1) return;
+
+    const osc = audio.createOscillator();
+    const filter = audio.createBiquadFilter();
+    const gain = audio.createGain();
+    const panner = audio.createStereoPanner();
+
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, time);
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(cutoff, time);
+    filter.Q.value = 1.4;
+    panner.pan.setValueAtTime(pan, time);
+
+    osc.connect(filter).connect(gain).connect(panner).connect(bus);
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.linearRampToValueAtTime(amp, time + 0.012);
+    gain.gain.exponentialRampToValueAtTime(
+      Math.max(amp * 0.24, 0.0001),
+      time + Math.max(0.04, length * 0.58)
+    );
+    gain.gain.linearRampToValueAtTime(0.0001, time + length);
+
+    osc.start(time);
+    osc.stop(time + length + 0.04);
+  }
+
+  function pad(freq, time, length, amp, pan) {
+    const bus = audio.createGain();
+    bus.gain.value = 0.8;
+    bus.connect(master);
+
+    voice(freq, time, length, amp, "sine", pan, 1800, bus);
+    voice(freq * 2, time + 0.012, length * 0.96, amp * 0.32, "triangle", -pan, 2500, bus);
+    voice(freq * 1.003, time + 0.018, length * 0.94, amp * 0.25, "sine", pan * 0.5, 1500, bus);
+  }
+
+  function burst(time, length, amp, filterType, frequency, Q, pan) {
+    if (time >= t0 + D + 0.1) return;
+
+    const source = audio.createBufferSource();
+    const filter = audio.createBiquadFilter();
+    const gain = audio.createGain();
+    const panner = audio.createStereoPanner();
+
+    source.buffer = noise;
+    filter.type = filterType;
+    filter.frequency.setValueAtTime(frequency, time);
+    filter.Q.value = Q;
+    panner.pan.setValueAtTime(pan, time);
+
+    source.connect(filter).connect(gain).connect(panner).connect(master);
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.linearRampToValueAtTime(amp, time + 0.002);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + length);
+
+    source.start(time);
+    source.stop(time + length + 0.01);
+  }
+
+  function kick(time, amp = 0.42) {
+    if (time >= t0 + D) return;
+
+    const osc = audio.createOscillator();
+    const gain = audio.createGain();
+    const click = audio.createBufferSource();
+    const clickFilter = audio.createBiquadFilter();
+    const clickGain = audio.createGain();
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(142, time);
+    osc.frequency.exponentialRampToValueAtTime(43, time + 0.14);
+    gain.gain.setValueAtTime(amp, time);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.22);
+    osc.connect(gain).connect(master);
+    osc.start(time);
+    osc.stop(time + 0.24);
+
+    click.buffer = noise;
+    clickFilter.type = "highpass";
+    clickFilter.frequency.value = 2400;
+    clickGain.gain.setValueAtTime(amp * 0.22, time);
+    clickGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.018);
+    click.connect(clickFilter).connect(clickGain).connect(master);
+    click.start(time);
+    click.stop(time + 0.025);
+  }
+
+  function snare(time, amp = 0.16) {
+    burst(time, 0.13, amp, "bandpass", 1800, 0.72, 0.08);
+    burst(time, 0.075, amp * 0.32, "highpass", 5200, 0.4, -0.14);
+  }
+
+  const chords = [
+    [50, 57, 62, 65],
+    [46, 53, 57, 62],
+    [53, 60, 64, 69],
+    [48, 55, 60, 64],
+    [50, 57, 62, 67],
+    [46, 53, 57, 62]
+  ];
+
+  for (let c = 0; c < chords.length; c++) {
+    const time = t0 + c * beatTime * 4;
+    const length = Math.min(beatTime * 4.35, D - c * beatTime * 4 + 0.25);
+    chords[c].forEach((note, j) => {
+      pad(midi(note), time + j * 0.018, length, 0.035 - j * 0.003, -0.32 + j * 0.21);
+    });
+  }
+
+  const bassRoots = [38, 38, 34, 34, 41, 41, 36, 36];
+  const bassPattern = [0, 0, 7, 0, 5, 0, 3, 7];
+
+  for (let i = 0; i < Math.ceil(D / beatTime); i++) {
+    const time = t0 + i * beatTime;
+    const root = bassRoots[Math.floor(i / 4) % bassRoots.length];
+    const note = root + bassPattern[i % bassPattern.length];
+    voice(midi(note), time, beatTime * 0.82, 0.16, "triangle", -0.18, 520);
+    if (i % 4 === 3) {
+      voice(midi(note + 12), time + beatTime * 0.52, beatTime * 0.35, 0.055, "sine", 0.2, 900);
+    }
+  }
+
+  const melody = [
+    74, null, 77, 81, 79, 77, null, 74,
+    72, 74, 77, null, 79, 81, 84, 81,
+    79, null, 77, 74, 72, 74, null, 69,
+    72, 74, 77, 79, 81, 79, 77, null,
+    74, 77, 81, 84, 86, 84, 81, 79,
+    77, 74, 72, null, 69, 72, 74, null
+  ];
+
+  melody.forEach((note, i) => {
+    if (note == null) return;
+    const time = t0 + i * eighth + (i % 5 === 0 ? 0.012 : 0);
+    const length = i % 8 === 3 ? eighth * 1.75 : eighth * 0.82;
+    const pan = Math.sin(i * 0.82) * 0.52;
+    const leadBus = audio.createGain();
+    leadBus.gain.value = 0.72;
+    leadBus.connect(master);
+    leadBus.connect(delay);
+
+    voice(midi(note), time, length, 0.105, "triangle", pan, 3100, leadBus);
+    voice(midi(note + 12), time + 0.004, length * 0.62, 0.021, "sine", -pan, 4800, leadBus);
+
+    if (i % 4 === 0 || i === 37) {
+      voice(midi(note + 19), time + 0.016, length * 0.36, 0.025, "sine", -pan * 0.5, 6500, leadBus);
+    }
+  });
+
+  for (let i = 0; i < Math.ceil(D / beatTime); i++) {
+    const time = t0 + i * beatTime;
+    kick(time, i % 8 === 7 ? 0.32 : 0.42);
+
+    if (i % 4 === 1 || i % 4 === 3) {
+      snare(time, i % 8 === 3 ? 0.19 : 0.14);
+    }
+
+    for (let h = 0; h < 2; h++) {
+      const hatTime = time + h * beatTime * 0.5;
+      burst(
+        hatTime,
+        h === 1 ? 0.042 : 0.055,
+        h === 1 ? 0.048 : 0.036,
+        "highpass",
+        h === 1 ? 6500 : 7800,
+        0.35,
+        h === 1 ? -0.48 : 0.46
+      );
+    }
+
+    if (i % 4 === 3) {
+      burst(time + beatTime * 0.72, 0.035, 0.035, "bandpass", 4200, 4, 0.35);
+    }
+  }
+
+  const finalTime = t0 + Math.max(0, D - 1.2);
+  [62, 69, 74, 77, 81].forEach((note, i) => {
+    pad(midi(note), finalTime + i * 0.025, Math.min(1.38, D - (finalTime - t0)), 0.028, -0.42 + i * 0.2);
+  });
+
+  const stars = Array.from({ length: 170 }, () => ({
+    x: rnd() * W,
+    y: rnd() * H,
+    r: 0.5 + rnd() * 2.5,
+    a: 0.18 + rnd() * 0.72,
+    speed: 0.04 + rnd() * 0.22,
+    phase: rnd() * Math.PI * 2
+  }));
+
+  const orbiters = Array.from({ length: 34 }, (_, i) => ({
+    radius: 130 + rnd() * 390,
+    speed: (0.12 + rnd() * 0.34) * (i % 2 ? -1 : 1),
+    phase: rnd() * Math.PI * 2,
+    size: 1.5 + rnd() * 5.5,
+    hue: 170 + rnd() * 150
+  }));
+
+  const spectrum = new Uint8Array(analyser.frequencyBinCount);
+  const view = canvas.getContext("2d");
+  let raf = 0;
+
+  function draw() {
+    const now = audio.currentTime;
+    const t = Math.max(0, Math.min(D, now - t0));
+    const beat = t / beatTime;
+    const pulse = Math.pow(Math.max(0, 1 - (beat % 1)), 3);
+    const barPulse = Math.pow(Math.max(0, 1 - ((beat / 4) % 1)), 2);
+    analyser.getByteFrequencyData(spectrum);
+
+    const bg = view.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, "#07091c");
+    bg.addColorStop(0.46, "#111536");
+    bg.addColorStop(1, "#030611");
+    view.fillStyle = bg;
+    view.fillRect(0, 0, W, H);
+
+    view.save();
+    view.globalCompositeOperation = "screen";
+
+    for (const s of stars) {
+      const twinkle = s.a * (0.58 + 0.42 * Math.sin(t * s.speed * 5 + s.phase));
+      view.fillStyle = `rgba(145,220,255,${twinkle})`;
+      view.beginPath();
+      view.arc(s.x, s.y, s.r * (0.75 + pulse * 0.8), 0, Math.PI * 2);
+      view.fill();
+    }
+
+    const cx = W * 0.5 + Math.sin(t * 0.17) * 32;
+    const cy = H * 0.51 + Math.cos(t * 0.13) * 28;
+
+    for (let ring = 0; ring < 5; ring++) {
+      const radius = 150 + ring * 78 + barPulse * (ring + 1) * 7;
+      view.strokeStyle = `hsla(${188 + ring * 22}, 90%, 70%, ${0.13 - ring * 0.016 + pulse * 0.05})`;
+      view.lineWidth = 1.4 + pulse * 1.4;
+      view.beginPath();
+      view.ellipse(
+        cx,
+        cy,
+        radius * (1.1 + Math.sin(t * 0.21 + ring) * 0.06),
+        radius * (0.48 + ring * 0.025),
+        t * (0.045 + ring * 0.008),
+        0,
+        Math.PI * 2
+      );
+      view.stroke();
+    }
+
+    for (const o of orbiters) {
+      const angle = o.phase + t * o.speed + Math.sin(t * 0.23 + o.phase) * 0.28;
+      const radius = o.radius + Math.sin(t * 0.47 + o.phase) * 16;
+      const x = cx + Math.cos(angle) * radius;
+      const y = cy + Math.sin(angle) * radius * 0.48;
+      const glow = 0.26 + pulse * 0.45;
+      view.fillStyle = `hsla(${o.hue}, 96%, 72%, ${glow})`;
+      view.beginPath();
+      view.arc(x, y, o.size * (1 + pulse * 0.8), 0, Math.PI * 2);
+      view.fill();
+    }
+
+    view.save();
+    view.translate(cx, cy);
+    view.rotate(t * 0.12);
+
+    for (let spoke = 0; spoke < 48; spoke++) {
+      const angle = (spoke / 48) * Math.PI * 2;
+      const index = Math.floor((spoke / 48) * spectrum.length);
+      const energy = spectrum[index] / 255;
+      const inner = 36 + energy * 26 + barPulse * 15;
+      const outer = 165 + energy * 260 + pulse * 42;
+      view.strokeStyle = `hsla(${190 + spoke * 3.2}, 100%, 72%, ${0.12 + energy * 0.42})`;
+      view.lineWidth = 1 + energy * 3;
+      view.beginPath();
+      view.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+      view.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+      view.stroke();
+    }
+
+    view.restore();
+
+    const core = view.createRadialGradient(cx, cy, 2, cx, cy, 130 + pulse * 30);
+    core.addColorStop(0, `rgba(255,255,255,${0.92 + pulse * 0.08})`);
+    core.addColorStop(0.035, `rgba(162,255,241,${0.9 + pulse * 0.1})`);
+    core.addColorStop(0.18, `rgba(87,210,255,${0.38 + pulse * 0.22})`);
+    core.addColorStop(1, "rgba(34,70,180,0)");
+    view.fillStyle = core;
+    view.beginPath();
+    view.arc(cx, cy, 145 + pulse * 35, 0, Math.PI * 2);
+    view.fill();
+
+    view.strokeStyle = `rgba(214,255,249,${0.38 + pulse * 0.35})`;
+    view.lineWidth = 2 + pulse * 2;
+    view.beginPath();
+    view.arc(cx, cy, 42 + pulse * 9, 0, Math.PI * 2);
+    view.stroke();
+
+    view.restore();
+
+    view.save();
+    view.globalCompositeOperation = "lighter";
+    view.strokeStyle = `rgba(120,180,255,${0.08 + barPulse * 0.1})`;
+    view.lineWidth = 1;
+    view.beginPath();
+    view.moveTo(72, H - 118);
+    view.lineTo(W - 72, H - 118);
+    view.stroke();
+
+    for (let i = 0; i < 16; i++) {
+      const x = 74 + i * 62;
+      const e = spectrum[(i * 7) % spectrum.length] / 255;
+      view.strokeStyle = `hsla(${185 + i * 8}, 90%, 70%, ${0.24 + e * 0.5})`;
+      view.lineWidth = 2 + e * 4;
+      view.beginPath();
+      view.moveTo(x, H - 118);
+      view.lineTo(x, H - 118 - e * 64 - pulse * (i % 3 === 0 ? 18 : 0));
+      view.stroke();
+    }
+    view.restore();
+
+    if (t < D) {
+      raf = requestAnimationFrame(draw);
+    } else {
+      cancelAnimationFrame(raf);
+    }
+  }
+
+  audio.resume?.();
+  draw();
+
+  return () => cancelAnimationFrame(raf);
+}

@@ -1,0 +1,58 @@
+{
+  "wallSeconds": {
+    "value": 436.282212333,
+    "source": "tool-result"
+  },
+  "toolReportedDurationSeconds": {
+    "value": 433.45,
+    "source": "tool-result"
+  },
+  "inputTokens": {
+    "value": 15095,
+    "source": "tool-result"
+  },
+  "outputTokens": {
+    "value": 38878,
+    "source": "tool-result"
+  },
+  "reasoningTokens": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "cachedReadTokens": {
+    "value": 44672,
+    "source": "tool-result"
+  },
+  "cachedWriteTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "reportedCostUsd": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "reportedModelId": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "requestedModelId": {
+    "value": "cursor-grok-4.6-high",
+    "source": "tool-result"
+  },
+  "tool": {
+    "value": "cursor-agent",
+    "source": "tool-result"
+  },
+  "toolVersion": {
+    "value": "2026.11.17-f532c45",
+    "source": "tool-result"
+  },
+  "effort": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "effortSetting": {
+    "value": "cursor-grok-4.6-high",
+    "source": "tool-result"
+  }
+}

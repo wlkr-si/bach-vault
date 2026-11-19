@@ -1,0 +1,58 @@
+{
+  "wallSeconds": {
+    "value": 705.779,
+    "source": "tool-result"
+  },
+  "toolReportedDurationSeconds": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "inputTokens": {
+    "value": 183,
+    "source": "tool-result"
+  },
+  "outputTokens": {
+    "value": 101065,
+    "source": "tool-result"
+  },
+  "reasoningTokens": {
+    "value": 90702,
+    "source": "tool-result"
+  },
+  "cachedReadTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "cachedWriteTokens": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "reportedCostUsd": {
+    "value": 0.45492975,
+    "source": "tool-result"
+  },
+  "reportedModelId": {
+    "value": "gpt-5.4-mini",
+    "source": "tool-result"
+  },
+  "requestedModelId": {
+    "value": "gpt-5.4-mini",
+    "source": "tool-result"
+  },
+  "tool": {
+    "value": "OpenCode Console",
+    "source": "tool-result"
+  },
+  "toolVersion": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "effort": {
+    "value": "high",
+    "source": "tool-result"
+  },
+  "effortSetting": {
+    "value": "high",
+    "source": "tool-result"
+  }
+}

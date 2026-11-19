@@ -1,0 +1,447 @@
+export const title = "Aeolian Loom";
+
+export function start({ audioContext: ac, canvas, duration, random }) {
+  /* ---------------- transport ---------------- */
+  const D = duration || 15;            // piece length in seconds
+  const E = 0.3125;                    // one eighth note at 96 bpm
+  const T0 = ac.currentTime + 0.08;    // transport zero
+  const hz = m => 440 * Math.pow(2, (m - 69) / 12);
+  const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+  const live = [];                     // every source node, for teardown
+
+  const O = (t, f) => { const o = ac.createOscillator(); o.type = t; o.frequency.value = f; return o; };
+  const G = v => { const g = ac.createGain(); g.gain.value = v; return g; };
+  const PAN = v => { if (ac.createStereoPanner) { const p = ac.createStereoPanner(); p.pan.value = v; return p; } return G(1); };
+
+  /* ---------------- master graph ---------------- */
+  const master = G(0.85);
+  const comp = ac.createDynamicsCompressor();
+  comp.threshold.value = -16; comp.knee.value = 18; comp.ratio.value = 3.2;
+  comp.attack.value = 0.004; comp.release.value = 0.22;
+  master.connect(comp); comp.connect(ac.destination);
+
+  const an = ac.createAnalyser(); an.fftSize = 4096; an.smoothingTimeConstant = 0.72;
+  comp.connect(an);
+  const bins = new Uint8Array(an.frequencyBinCount);
+  const binHz = ac.sampleRate / an.fftSize;
+
+  // generated hall: stereo noise, exponential decay, tail that darkens over time
+  const conv = ac.createConvolver();
+  (function makeIR() {
+    const sec = 3.0, n = (ac.sampleRate * sec) | 0;
+    const buf = ac.createBuffer(2, n, ac.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch); let lp = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / ac.sampleRate;
+        const a = 0.22 + 0.62 * (t / sec);
+        lp = lp * a + (random() * 2 - 1) * (1 - a);
+        d[i] = (t < 0.018 ? 0 : 1) * lp * Math.exp(-t * 1.9);
+      }
+    }
+    let e = 0;
+    for (let ch = 0; ch < 2; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < n; i++) e += d[i] * d[i]; }
+    const s = 1.15 / Math.sqrt(e / 2);
+    for (let ch = 0; ch < 2; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < n; i++) d[i] *= s; }
+    conv.buffer = buf;
+  })();
+  const wet = G(0.6); conv.connect(wet); wet.connect(master);
+
+  const bus = (dryAmt, sendAmt) => {
+    const g = G(1), d = G(dryAmt), w = G(sendAmt);
+    g.connect(d); d.connect(master); g.connect(w); w.connect(conv); return g;
+  };
+  const glassBus = bus(0.95, 0.45);
+  const feltBus  = bus(1.00, 0.28);
+  const choirBus = bus(0.80, 0.60);
+
+  // dotted-eighth echo, just for the glass voice
+  const dly = ac.createDelay(1); dly.delayTime.value = E * 1.5;
+  const dlp = ac.createBiquadFilter(); dlp.type = 'lowpass'; dlp.frequency.value = 2400;
+  const dfb = G(0.30), dOut = G(0.15), dSend = G(0.35);
+  dly.connect(dlp); dlp.connect(dfb); dfb.connect(dly);
+  dly.connect(dOut); dOut.connect(master); dOut.connect(conv);
+  dSend.connect(dly);
+
+  const noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+  { const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = random() * 2 - 1; }
+
+  /* ---------------- instruments ---------------- */
+  // glass celesta: inharmonic FM strike over a sine, octave shimmer on the attack
+  function glass(m, at, vel, dec, panV = 0.25, wetX = 0) {
+    const f = hz(m), t = T0 + at;
+    dec = dec ?? clamp(0.9 + 300 / f, 0.7, 2.2);
+    const out = G(0);
+    out.gain.setValueAtTime(0, t);
+    out.gain.linearRampToValueAtTime(vel, t + 0.006);
+    out.gain.exponentialRampToValueAtTime(0.0004, t + dec);
+    const car = O('sine', f), oct = O('sine', f * 2.004);
+    const og = G(0.16); og.gain.setTargetAtTime(0.0001, t, 0.07);
+    const mod = O('sine', f * 3.008), mg = G(f * 3.1 * vel);
+    mg.gain.exponentialRampToValueAtTime(f * 0.02, t + 0.5);
+    mod.connect(mg); mg.connect(car.frequency);
+    car.connect(out); oct.connect(og); og.connect(out);
+    const pn = PAN(panV); out.connect(pn);
+    pn.connect(glassBus); pn.connect(dSend);
+    if (wetX) { const wx = G(wetX); pn.connect(wx); wx.connect(conv); }
+    const te = t + dec + 0.1;
+    [car, oct, mod].forEach(o => { o.start(t); o.stop(te); live.push(o); });
+  }
+
+  // felt bass: soft low pulse, filter closing over the note
+  function felt(m, at, vel, dec) {
+    const f = hz(m), t = T0 + at;
+    dec = dec ?? clamp(1.2 + 220 / f, 1.0, 2.6);
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.6;
+    lp.frequency.setValueAtTime(clamp(f * 7, 300, 1500), t);
+    lp.frequency.exponentialRampToValueAtTime(clamp(f * 1.6, 70, 420), t + 0.55);
+    const out = G(0);
+    out.gain.setValueAtTime(0, t);
+    out.gain.linearRampToValueAtTime(vel, t + 0.014);
+    out.gain.setTargetAtTime(0.0001, t + 0.03, dec * 0.33);
+    const o1 = O('sine', f), o2 = O('sine', f * 2), o3 = O('triangle', f);
+    const g2 = G(0.28), g3 = G(0.4);
+    o1.connect(out); o2.connect(g2); g2.connect(out); o3.connect(g3); g3.connect(out);
+    out.connect(lp); const pn = PAN(-0.2); lp.connect(pn); pn.connect(feltBus);
+    const te = t + dec + 0.35;
+    [o1, o2, o3].forEach(o => { o.start(t); o.stop(te); live.push(o); });
+  }
+
+  // glass choir: detuned sines with a slow breath of vibrato, sustained
+  function choir(m, at, dur, vel) {
+    const f = hz(m), t = T0 + at;
+    const out = G(0);
+    out.gain.setValueAtTime(0, t);
+    out.gain.linearRampToValueAtTime(vel, t + 0.1);
+    out.gain.setValueAtTime(vel, t + Math.max(0.12, dur - 0.25));
+    out.gain.linearRampToValueAtTime(0.0001, t + dur + 0.18);
+    const o1 = O('sine', f * 0.9985), o2 = O('sine', f * 1.0015), o3 = O('sine', f * 2);
+    const g3 = G(0.12);
+    const vib = O('sine', 4.4), vg = G(f * 0.0045);
+    vib.connect(vg); vg.connect(o1.frequency); vg.connect(o2.frequency);
+    o1.connect(out); o2.connect(out); o3.connect(g3); g3.connect(out);
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = Math.max(900, f * 3);
+    out.connect(lp); const pn = PAN(0.02); lp.connect(pn); pn.connect(choirBus);
+    const te = t + dur + 0.4;
+    [o1, o2, o3, vib].forEach(o => { o.start(t); o.stop(te); live.push(o); });
+  }
+
+  /* ---------------- the score ----------------
+     96 bpm, 6 bars of 4/4, 48 eighth slots = exactly 15 s.
+     Bars 1-2: the ground states itself (bass + choir).
+     Bar 2:   the glass enters in octave imitation.
+     Bars 3-4: the line develops into rising eighths.
+     Bar 5:   peak A5 over a noise riser; 4-2-1 descent.
+     Bar 6:   cadence lands at 12.5 s, everything rings out.   */
+  const MEL = [[8,69,2,.60],[10,64,2,.48],[12,65,2,.52],[14,64,1,.42],[15,62,1,.38],
+    [16,72,2,.66],[18,69,2,.52],[20,71,2,.48],[22,67,1,.44],[23,64,1,.38],
+    [24,65,1,.50],[25,69,1,.55],[26,72,1,.60],[27,69,1,.48],
+    [28,74,1,.58],[29,72,1,.50],[30,71,2,.54],
+    [32,81,2,.82],[34,79,1,.58],[35,77,1,.52],[36,76,2,.62],[38,74,1,.50],[39,71,1,.46],
+    [40,69,6,.78]];
+  const BAS = [[0,45,2,.52],[2,40,2,.46],[4,41,2,.50],[6,40,2,.44],
+    [8,38,2,.52],[10,48,2,.46],[12,47,2,.46],[14,40,2,.50],
+    [16,45,2,.52],[18,40,2,.46],[20,41,2,.50],[22,40,2,.44],
+    [24,38,2,.52],[26,48,2,.46],[28,47,2,.46],[30,40,2,.52],
+    [32,38,2,.52],[34,40,2,.52],[36,43,2,.50],[38,40,1,.46],[39,40,1,.44],
+    [40,33,7,.85]];
+  const MID = [[0,52,4,.20],[4,60,4,.17],[8,62,4,.20],[12,55,4,.18],
+    [16,57,4,.20],[20,60,4,.17],[24,57,4,.20],[28,55,4,.18],
+    [32,65,4,.20],[36,64,4,.19],[40,57,7,.20],[40,64,7,.15]];
+
+  const NOTES = [];
+  const push = (v, m, t, d, vel) => NOTES.push({ v, m, t, d, vel });
+
+  MEL.forEach(([e, m, d, v]) => {
+    const at = e * E + (e < 40 ? (random() - 0.5) * 0.012 : 0);
+    const vel = v * (0.92 + random() * 0.16);
+    glass(m, at, vel, e >= 40 ? 2.6 : undefined, 0.18 + random() * 0.14);
+    push(0, m, at, d * E, vel);
+  });
+  BAS.forEach(([e, m, d, v]) => {
+    const at = e * E + (e < 40 ? (random() - 0.5) * 0.010 : 0);
+    const vel = v * (0.94 + random() * 0.12);
+    felt(m, at, vel, e >= 40 ? 2.9 : undefined);
+    push(1, m, at, d * E, vel);
+  });
+  MID.forEach(([e, m, d, v]) => {
+    const at = e * E, dur = d * E;
+    choir(m, at, dur, v);
+    push(2, m, at, dur, v);
+  });
+  // bell bloom: A5 C6 E6 A6 grains scattered over the final chord
+  [[0.000, 81, .40, 0.30], [0.085, 84, .44, -0.15], [0.170, 88, .50, 0.42], [0.260, 93, .55, 0.08]]
+    .forEach(([dt, m, v, pn]) => {
+      glass(m, 12.5 + dt, v, 1.9 - dt * 1.4, pn, 0.55);
+      push(0, m, 12.5 + dt, 0.35, v);
+    });
+
+  // the one gesture: a soft bandpassed swell rising into the cadence
+  (function riser() {
+    const t = T0 + 10.6, dur = 1.9;
+    const src = ac.createBufferSource(); src.buffer = noiseBuf;
+    const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.1;
+    bp.frequency.setValueAtTime(240, t);
+    bp.frequency.exponentialRampToValueAtTime(3300, t + dur);
+    const g = G(0);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.06, t + dur);
+    g.gain.setTargetAtTime(0.0001, t + dur, 0.04);
+    src.connect(bp); bp.connect(g); g.connect(master);
+    const w = G(0.4); g.connect(w); w.connect(conv);
+    src.start(t); src.stop(t + dur + 0.4); live.push(src);
+  })();
+
+  /* ---------------- the plate (visuals) ---------------- */
+  const W = canvas.width, Hh = canvas.height;
+  const cv = canvas.getContext('2d');
+  const FX0 = 86, FX1 = 994, FY0 = 150, FY1 = 1312;      // engraving frame
+  const Y0 = 170, Y1 = 1292;                              // time axis inside it
+  const pitchX = m => 110 + (m - 30) / 66 * 860;          // midi 30..96 -> x
+  const timeY = t => Y0 + clamp(t / D, 0, 1) * (Y1 - Y0); // 0..D s -> y
+  const xf = pitchX(69), yf = timeY(12.5);                // the cadence point
+
+  // static background, rendered once
+  const bgc = document.createElement('canvas'); bgc.width = W; bgc.height = Hh;
+  (function drawBG() {
+    const b = bgc.getContext('2d');
+    b.fillStyle = '#0f0d0a'; b.fillRect(0, 0, W, Hh);
+    // bar lines + quarter ticks
+    for (let q = 0; q <= 60; q++) {
+      const y = Y0 + (Y1 - Y0) * q / 60;
+      if (q % 10 === 0) { b.strokeStyle = 'rgba(120,110,92,.30)'; b.lineWidth = 1; b.beginPath(); b.moveTo(FX0 + 2, y); b.lineTo(FX1 - 2, y); b.stroke(); }
+      else { b.strokeStyle = 'rgba(120,110,92,.16)'; b.beginPath(); b.moveTo(FX0 + 2, y); b.lineTo(FX0 + 8, y); b.moveTo(FX1 - 8, y); b.lineTo(FX1 - 2, y); b.stroke(); }
+    }
+    // roman bar numerals
+    const RN = ['I', 'II', 'III', 'IV', 'V', 'VI'];
+    b.font = '15px Georgia, serif'; b.textAlign = 'center'; b.fillStyle = 'rgba(140,130,110,.6)';
+    for (let i = 0; i < 6; i++) b.fillText(RN[i], 62, Y0 + (i + 0.55) * (Y1 - Y0) / 6);
+    // octave markers on the pitch axis
+    b.font = '10px Georgia, serif'; b.fillStyle = 'rgba(140,130,110,.5)';
+    [33, 45, 57, 69, 81, 93].forEach(m => b.fillText('A' + (1 + (m - 33) / 12), pitchX(m), FY0 + 18));
+    // frame + corner accents
+    b.strokeStyle = 'rgba(92,84,68,.8)'; b.lineWidth = 1; b.strokeRect(FX0, FY0, FX1 - FX0, FY1 - FY0);
+    b.strokeStyle = 'rgba(150,138,112,.7)';
+    [[FX0, FY0, 1, 1], [FX1, FY0, -1, 1], [FX0, FY1, 1, -1], [FX1, FY1, -1, -1]].forEach(([x, y, sx, sy]) => {
+      b.beginPath(); b.moveTo(x + sx * 10, y); b.lineTo(x, y); b.lineTo(x, y + sy * 10); b.stroke();
+    });
+    // header
+    b.textAlign = 'left'; b.letterSpacing = '9px';
+    b.font = '600 33px Georgia, "Times New Roman", serif'; b.fillStyle = 'rgba(207,196,173,.92)';
+    b.fillText('AEOLIAN LOOM', 88, 82);
+    b.letterSpacing = '2px'; b.font = 'italic 16px Georgia, serif'; b.fillStyle = 'rgba(141,131,113,.85)';
+    b.fillText('invention in A minor · for glass, felt & choir', 90, 108);
+    b.textAlign = 'right'; b.letterSpacing = '1px'; b.font = '13px Georgia, serif';
+    b.fillText('96 BPM · 6 BARS · 15 SEC', 992, 82);
+    b.letterSpacing = '0px'; b.textAlign = 'center'; b.font = 'italic 15px Georgia, serif';
+    b.fillStyle = 'rgba(120,110,92,.55)'; b.fillText('for J. S., with thanks', 540, 1338);
+    // paper grain + vignette
+    const gr = document.createElement('canvas'); gr.width = gr.height = 160;
+    const gc = gr.getContext('2d'), id = gc.createImageData(160, 160);
+    for (let i = 0; i < id.data.length; i += 4) {
+      const v = (random() * 255) | 0;
+      id.data[i] = v; id.data[i + 1] = (v * 0.96) | 0; id.data[i + 2] = (v * 0.9) | 0; id.data[i + 3] = (random() * 14) | 0;
+    }
+    gc.putImageData(id, 0, 0);
+    b.fillStyle = b.createPattern(gr, 'repeat'); b.fillRect(0, 0, W, Hh);
+    const vg = b.createRadialGradient(540, 640, 300, 540, 675, 900);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.40)');
+    b.fillStyle = vg; b.fillRect(0, 0, W, Hh);
+  })();
+
+  // deterministic hash-noise for particles (rAF timing never touches the seed)
+  const pr = a => { const s = Math.sin(a * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+
+  const HEADC = ['rgba(255,235,190,', 'rgba(255,178,120,', 'rgba(223,232,206,'];
+  const DIMC  = ['rgba(168,148,110,', 'rgba(128,80,52,', 'rgba(118,128,104,'];
+  const line = (a, b2, c, d2) => { cv.beginPath(); cv.moveTo(a, b2); cv.lineTo(c, d2); cv.stroke(); };
+
+  // analytic envelope per note: what the eye hears
+  function nenv(n, vt) {
+    const a = vt - n.t; if (a < 0) return 0;
+    if (n.v === 2) {
+      const end = n.d + 0.35; if (a > end) return 0;
+      if (a < 0.1) return n.vel * a / 0.1;
+      if (a < n.d) return n.vel;
+      return n.vel * (1 - (a - n.d) / 0.35);
+    }
+    const tau = Math.max(0.45, n.d * 0.9 + 0.4);
+    if (a > tau * 3) return 0;
+    return n.vel * Math.exp(-a / tau) * (a < 0.018 ? a / 0.018 : 1);
+  }
+
+  function drawNote(n, vt) {
+    const x = pitchX(n.m), y = timeY(n.t), y1 = timeY(n.t + n.d);
+    const a = nenv(n, vt);
+    if (a > 0) {                                        // being struck / ringing
+      const k = a / n.vel;
+      const yn = timeY(Math.min(vt, n.t + n.d));
+      cv.strokeStyle = 'rgba(140,132,118,.28)'; cv.lineWidth = n.v === 1 ? 2.5 : 1.2; line(x, yn, x, y1);
+      cv.strokeStyle = HEADC[n.v] + (0.55 * k) + ')';   cv.lineWidth = n.v === 1 ? 3 : 1.6; line(x, y, x, yn);
+      cv.fillStyle = HEADC[n.v] + (0.9 * k) + ')';
+      if (n.v === 0) {
+        cv.beginPath(); cv.arc(x, y, 3 + 3 * k, 0, 7); cv.fill();
+        cv.strokeStyle = HEADC[0] + (0.3 * k) + ')'; cv.lineWidth = 1.2;
+        cv.beginPath(); cv.arc(x, y, 7 + 9 * k, 0, 7); cv.stroke();
+      } else if (n.v === 1) {
+        cv.beginPath(); cv.ellipse(x, y, 7 + 4 * k, 4 + 2.5 * k, 0, 0, 7); cv.fill();
+      } else {
+        cv.strokeStyle = HEADC[2] + (0.8 * k) + ')'; cv.lineWidth = 1.4;
+        cv.beginPath(); cv.arc(x, y, 3 + 2 * k, 0, 7); cv.stroke();
+        cv.fillStyle = HEADC[2] + (0.25 * k) + ')'; cv.fill();
+      }
+    } else if (vt > n.t + n.d + 0.3) {                  // woven: settled into the fabric
+      const s = clamp(1 - (vt - n.t - n.d) / 7, 0.5, 1);
+      cv.strokeStyle = DIMC[n.v] + (0.55 * s) + ')'; cv.lineWidth = n.v === 1 ? 2.4 : 1.1; line(x, y, x, y1);
+      if (n.v === 0) { cv.fillStyle = DIMC[0] + (0.6 * s) + ')'; cv.beginPath(); cv.arc(x, y, 2.8, 0, 7); cv.fill(); }
+      else if (n.v === 1) { cv.fillStyle = DIMC[1] + (0.6 * s) + ')'; cv.beginPath(); cv.ellipse(x, y, 6.5, 3.6, 0, 0, 7); cv.fill(); }
+      else { cv.strokeStyle = DIMC[2] + (0.5 * s) + ')'; cv.beginPath(); cv.arc(x, y, 2.8, 0, 7); cv.stroke(); }
+    } else {                                            // ghost: the future, faint but legible
+      const near = clamp(1 - (n.t - vt), 0, 1);
+      const al = 0.3 + 0.3 * near;
+      const col = 'rgba(150,142,128,' + al + ')';
+      cv.strokeStyle = col; cv.lineWidth = 1; line(x, y, x, y1);
+      cv.fillStyle = col; cv.strokeStyle = col;
+      if (n.v === 0) { cv.beginPath(); cv.arc(x, y, 2.4, 0, 7); cv.fill(); }
+      else if (n.v === 1) { cv.beginPath(); cv.ellipse(x, y, 6, 3.4, 0, 0, 7); cv.fill(); }
+      else { cv.beginPath(); cv.arc(x, y, 2.4, 0, 7); cv.stroke(); }
+    }
+  }
+
+  /* ---------------- animation ---------------- */
+  const RINGS = [[69, 'lo'], [72, 'lo'], [76, 'mid'], [81, 'mid'], [84, 'hi'], [88, 'hi'], [93, 'hi']];
+  const rp = [], spk = [], bfl = [];
+  let prevVt = -1, lastBar = -1, flash = 0, raf = 0, running = true;
+
+  function frame() {
+    if (!running) return;
+    const vt = ac.currentTime - T0;
+    if (vt > D + 1) { running = false; return; }
+    raf = requestAnimationFrame(frame);
+    const dt = prevVt < 0 ? 0.016 : clamp(vt - prevVt, 0.001, 0.05); prevVt = vt;
+
+    an.getByteFrequencyData(bins);
+    const band = (f0, f1) => {
+      const b0 = Math.max(1, Math.round(f0 / binHz)), b1 = Math.min(bins.length - 1, Math.round(f1 / binHz));
+      let s = 0; for (let i = b0; i <= b1; i++) s += bins[i];
+      return s / ((b1 - b0 + 1) * 255);
+    };
+    const lo = band(35, 160), mid = band(220, 950), hi = band(1500, 7000);
+    const rms = lo * 0.5 + mid * 0.3 + hi * 0.2;
+
+    cv.drawImage(bgc, 0, 0);
+
+    // the warp: one string per semitone, swaying with the energy at its own pitch
+    for (let m = 30; m <= 96; m++) {
+      const v = bins[Math.min(bins.length - 1, Math.round(hz(m) / binHz))] / 255;
+      const x = pitchX(m) + Math.sin(vt * 1.3 + m * 0.55) * (1 + v * 7);
+      const pc = m % 12;
+      cv.strokeStyle = 'rgba(190,178,150,' + ((pc === 9 || pc === 4 ? 0.10 : 0.045) + v * 0.25) + ')';
+      cv.lineWidth = 1; line(x, FY0 + 6, x, FY1 - 6);
+    }
+
+    cv.save();
+    cv.beginPath(); cv.rect(FX0 + 1, FY0 + 1, FX1 - FX0 - 2, FY1 - FY0 - 2); cv.clip();
+
+    // bar-line flash as the shuttle crosses each bar
+    const bi = Math.floor(vt / 2.5);
+    if (bi !== lastBar && vt > 0 && vt <= D) { lastBar = bi; bfl.push({ y: timeY(bi * 2.5), a: 1 }); }
+    for (let i = bfl.length - 1; i >= 0; i--) {
+      const b = bfl[i]; b.a *= Math.exp(-dt * 3);
+      if (b.a < 0.02) { bfl.splice(i, 1); continue; }
+      cv.strokeStyle = 'rgba(203,185,142,' + b.a * 0.5 + ')'; cv.lineWidth = 1; line(FX0 + 2, b.y, FX1 - 2, b.y);
+    }
+
+    // the score itself
+    for (const n of NOTES) drawNote(n, vt);
+
+    // strikes: ripples, sparks, and the flash for the A5 peak
+    for (const n of NOTES) {
+      if (n.t > prevVt - dt && n.t <= vt) {
+        rp.push({ x: pitchX(n.m), y: timeY(n.t), t0: n.t, rm: n.v === 1 ? 95 : n.v === 2 ? 55 : 60 + n.vel * 130 });
+        if (n.v === 0 && n.vel > 0.5) {
+          const c = n.vel > 0.7 ? 18 : 4;
+          for (let k = 0; k < c; k++) {
+            const a0 = pr(n.t * 91 + k) * 6.283, s0 = 30 + pr(n.t * 57 + k * 3) * 90;
+            spk.push({ x: pitchX(n.m), y: timeY(n.t), vx: Math.cos(a0) * s0, vy: Math.sin(a0) * s0 - 20, l: 0.5 + pr(n.t * 13 + k) * 0.6 });
+          }
+        }
+        if (n.v === 0 && n.m === 81 && n.t < 10.1) flash = 1;
+      }
+    }
+    for (let i = rp.length - 1; i >= 0; i--) {
+      const r = rp[i], rr = (vt - r.t0) * 300;
+      if (rr > r.rm) { rp.splice(i, 1); continue; }
+      cv.strokeStyle = 'rgba(230,210,170,' + 0.32 * (1 - rr / r.rm) + ')'; cv.lineWidth = 1.4;
+      cv.beginPath(); cv.ellipse(r.x, r.y, rr, rr * 0.7, 0, 0, 7); cv.stroke();
+    }
+    for (let i = spk.length - 1; i >= 0; i--) {
+      const p = spk[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 26 * dt; p.l -= dt;
+      if (p.l <= 0) { spk.splice(i, 1); continue; }
+      cv.strokeStyle = 'rgba(255,214,140,' + clamp(p.l / 0.8, 0, 1) * 0.8 + ')'; cv.lineWidth = 1.2;
+      line(p.x, p.y, p.x - p.vx * 0.05, p.y - p.vy * 0.05);
+    }
+
+    // the riser: threads closing in on the cadence point
+    if (vt > 10.6 && vt < 12.6) {
+      const p = clamp((vt - 10.6) / 1.9, 0, 1), pe = p * p * (3 - 2 * p);
+      for (let i = 0; i < 16; i++) {
+        const a0 = i / 16 * Math.PI * 2 + 0.35 + i * 0.21;
+        const ox = xf + Math.cos(a0) * (180 + 560 * (1 - pe)), oy = yf + Math.sin(a0) * (70 + 300 * (1 - pe));
+        cv.strokeStyle = 'rgba(214,190,150,' + 0.13 * pe + ')'; cv.lineWidth = 0.9;
+        line(ox, oy, ox + (xf - ox) * pe, oy + (yf - oy) * pe);
+      }
+    }
+
+    // the shuttle
+    const py = timeY(clamp(vt, 0, D));
+    const pa = clamp(vt * 2, 0, 1);
+    cv.fillStyle = 'rgba(242,234,214,' + (0.06 + 0.05 * rms) + ')'; cv.fillRect(FX0 + 2, py - 4, FX1 - FX0 - 4, 8);
+    cv.fillStyle = 'rgba(244,236,216,' + pa * (0.55 + 0.3 * hi) + ')'; cv.fillRect(FX0 + 2, py - 1, FX1 - FX0 - 4, 2);
+    cv.fillStyle = 'rgba(216,205,178,' + pa + ')';
+    cv.beginPath(); cv.ellipse(64, py, 13, 4.6, 0, 0, 7); cv.fill();
+    cv.fillStyle = 'rgba(255,240,210,' + pa + ')';
+    cv.beginPath(); cv.ellipse(69, py, 3, 2, 0, 0, 7); cv.fill();
+    cv.strokeStyle = 'rgba(216,205,178,' + pa * 0.5 + ')'; cv.lineWidth = 1; line(77, py, FX0, py);
+
+    cv.restore();
+
+    // the bloom: the chord escapes the plate — rings spun from its own partials
+    if (vt > 12.4) {
+      const bp = clamp((vt - 12.5) / 0.9, 0, 1);
+      if (bp < 1) {
+        cv.strokeStyle = 'rgba(212,186,140,' + 0.16 * bp + ')'; cv.lineWidth = 0.8;
+        for (const n of NOTES) if (n.t > 9.9) line(pitchX(n.m), timeY(n.t), xf, yf);
+      }
+      for (const [m, src] of RINGS) {
+        const e = src === 'lo' ? lo : src === 'mid' ? mid : hi;
+        const r = 24 + (m - 69) * 9;
+        cv.strokeStyle = 'rgba(228,204,158,' + bp * (0.05 + 0.30 * e) + ')';
+        cv.lineWidth = m > 84 ? 0.9 : 1.4;
+        cv.setLineDash([6 + r * 0.05, 11]);
+        cv.lineDashOffset = vt * (14 + m * 0.7) * (m % 2 ? 1 : -1);
+        cv.beginPath(); cv.arc(xf, yf, r, 0, 7); cv.stroke();
+      }
+      cv.setLineDash([]);
+      cv.fillStyle = 'rgba(255,236,196,' + bp * (0.5 + 0.5 * rms) + ')';
+      cv.beginPath(); cv.arc(xf, yf, 3 + rms * 10 + bp * 2, 0, 7); cv.fill();
+      cv.fillStyle = 'rgba(214,186,140,' + 0.045 * bp + ')';   // the whole past settles warm
+      cv.fillRect(FX0 + 2, FY0 + 2, FX1 - FX0 - 4, Math.max(0, py - FY0 - 4));
+    }
+
+    if (flash > 0.005) {
+      flash *= Math.exp(-dt * 5);
+      cv.fillStyle = 'rgba(255,226,180,' + flash * 0.05 + ')';
+      cv.fillRect(0, 0, W, Hh);
+    }
+  }
+  raf = requestAnimationFrame(frame);
+
+  return {
+    stop() {
+      running = false; cancelAnimationFrame(raf);
+      live.forEach(s => { try { s.stop(); } catch (e) {} });
+      try { master.disconnect(); comp.disconnect(); an.disconnect(); } catch (e) {}
+    }
+  };
+}

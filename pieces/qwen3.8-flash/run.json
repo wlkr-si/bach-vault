@@ -1,0 +1,58 @@
+{
+  "wallSeconds": {
+    "value": 1044.911,
+    "source": "tool-result"
+  },
+  "toolReportedDurationSeconds": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "inputTokens": {
+    "value": 246,
+    "source": "tool-result"
+  },
+  "outputTokens": {
+    "value": 61080,
+    "source": "tool-result"
+  },
+  "reasoningTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "cachedReadTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "cachedWriteTokens": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "reportedCostUsd": {
+    "value": 0.0287445,
+    "source": "tool-result"
+  },
+  "reportedModelId": {
+    "value": "qwen3.8-flash",
+    "source": "tool-result"
+  },
+  "requestedModelId": {
+    "value": "qwen3.8-flash",
+    "source": "tool-result"
+  },
+  "tool": {
+    "value": "OpenCode Console",
+    "source": "tool-result"
+  },
+  "toolVersion": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "effort": {
+    "value": "high",
+    "source": "tool-result"
+  },
+  "effortSetting": {
+    "value": "high",
+    "source": "tool-result"
+  }
+}

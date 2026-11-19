@@ -1,0 +1,58 @@
+{
+  "wallSeconds": {
+    "value": 131.45,
+    "source": "tool-result"
+  },
+  "toolReportedDurationSeconds": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "inputTokens": {
+    "value": 300,
+    "source": "tool-result"
+  },
+  "outputTokens": {
+    "value": 40813,
+    "source": "tool-result"
+  },
+  "reasoningTokens": {
+    "value": 36186,
+    "source": "tool-result"
+  },
+  "cachedReadTokens": {
+    "value": 78,
+    "source": "tool-result"
+  },
+  "cachedWriteTokens": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "reportedCostUsd": {
+    "value": 0.04904688,
+    "source": "tool-result"
+  },
+  "reportedModelId": {
+    "value": "minimax-m3",
+    "source": "tool-result"
+  },
+  "requestedModelId": {
+    "value": "minimax-m3",
+    "source": "tool-result"
+  },
+  "tool": {
+    "value": "OpenCode Console",
+    "source": "tool-result"
+  },
+  "toolVersion": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "effort": {
+    "value": "high",
+    "source": "tool-result"
+  },
+  "effortSetting": {
+    "value": "high",
+    "source": "tool-result"
+  }
+}

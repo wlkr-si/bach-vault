@@ -1,0 +1,58 @@
+{
+  "wallSeconds": {
+    "value": 431.889,
+    "source": "tool-result"
+  },
+  "toolReportedDurationSeconds": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "inputTokens": {
+    "value": 190,
+    "source": "tool-result"
+  },
+  "outputTokens": {
+    "value": 45080,
+    "source": "tool-result"
+  },
+  "reasoningTokens": {
+    "value": 35877,
+    "source": "tool-result"
+  },
+  "cachedReadTokens": {
+    "value": 9,
+    "source": "tool-result"
+  },
+  "cachedWriteTokens": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "reportedCostUsd": {
+    "value": 0.19860774,
+    "source": "tool-result"
+  },
+  "reportedModelId": {
+    "value": "glm-5.3",
+    "source": "tool-result"
+  },
+  "requestedModelId": {
+    "value": "glm-5.3",
+    "source": "tool-result"
+  },
+  "tool": {
+    "value": "OpenCode Console",
+    "source": "tool-result"
+  },
+  "toolVersion": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "effort": {
+    "value": "high",
+    "source": "tool-result"
+  },
+  "effortSetting": {
+    "value": "high",
+    "source": "tool-result"
+  }
+}

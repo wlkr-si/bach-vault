@@ -1,0 +1,371 @@
+```javascript
+export const title = "Prism Falling Up";
+
+export function start({ audioContext, canvas, duration, random }) {
+  const ctx = audioContext;
+  const D = duration || 15;
+  const t0 = ctx.currentTime + 0.06;
+  const W = canvas.width, H = canvas.height;
+  const g2 = canvas.getContext("2d");
+  const R = random;
+  const beat = 0.625, barLen = 2.5, eighth = 0.3125;
+  const freq = m => 440 * Math.pow(2, (m - 69) / 12);
+
+  // ---------- audio graph ----------
+  const master = ctx.createGain(); master.gain.value = 0.9;
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -16; comp.ratio.value = 6; comp.attack.value = 0.004; comp.release.value = 0.24;
+  master.connect(comp); comp.connect(ctx.destination);
+  master.gain.setValueAtTime(0.9, t0 + 14.4);
+  master.gain.linearRampToValueAtTime(0.001, t0 + D);
+
+  const melodyBus = ctx.createGain(); melodyBus.gain.value = 0.9; melodyBus.connect(master);
+  const padBus = ctx.createGain(); padBus.gain.value = 0.8; padBus.connect(master);
+  const percBus = ctx.createGain(); percBus.gain.value = 0.7; percBus.connect(master);
+
+  // reverb
+  const verb = ctx.createConvolver();
+  const impLen = Math.floor(ctx.sampleRate * 2.8);
+  const imp = ctx.createBuffer(2, impLen, ctx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) { const d = imp.getChannelData(ch);
+    for (let i = 0; i < impLen; i++) d[i] = (R() * 2 - 1) * Math.pow(1 - i / impLen, 2.6); }
+  verb.buffer = imp;
+  const verbGain = ctx.createGain(); verbGain.gain.value = 0.38;
+  verb.connect(verbGain); verbGain.connect(master);
+  melodyBus.connect(verb); padBus.connect(verb);
+
+  // dotted-eighth delay
+  const delay = ctx.createDelay(2); delay.delayTime.value = 0.46875;
+  const fb = ctx.createGain(); fb.gain.value = 0.34;
+  const wet = ctx.createGain(); wet.gain.value = 0.20;
+  melodyBus.connect(delay); delay.connect(fb); fb.connect(delay);
+  delay.connect(wet); wet.connect(master);
+
+  // noise buffer
+  const noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+  { const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = R() * 2 - 1; }
+
+  const events = []; // for visuals
+  const ev = (t, v) => events.push({ t, v });
+
+  // ---------- instruments ----------
+  function piano(midi, when, dur, vel) {
+    const f = freq(midi);
+    const out = ctx.createGain();
+    const flt = ctx.createBiquadFilter(); flt.type = "lowpass"; flt.frequency.value = 2400; flt.Q.value = 0.4;
+    out.connect(flt); flt.connect(melodyBus);
+    const mk = (type, mult, gv) => {
+      const o = ctx.createOscillator(); o.type = type; o.frequency.value = f * mult;
+      const og = ctx.createGain(); og.gain.value = gv; o.connect(og); og.connect(out);
+      o.start(when); o.stop(when + dur + 0.1);
+    };
+    mk("sine", 1, 1); mk("triangle", 1, 0.45); mk("sine", 2, 0.28); mk("sine", 3.01, 0.08);
+    out.gain.setValueAtTime(0, when);
+    out.gain.linearRampToValueAtTime(vel, when + 0.008);
+    out.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+  }
+
+  function padNote(midi, when, dur, vel) {
+    const f = freq(midi);
+    const flt = ctx.createBiquadFilter(); flt.type = "lowpass"; flt.frequency.value = 880; flt.Q.value = 0.5;
+    const out = ctx.createGain(); flt.connect(out); out.connect(padBus);
+    [-6, 6].forEach(det => {
+      const o = ctx.createOscillator(); o.type = "sawtooth"; o.frequency.value = f; o.detune.value = det;
+      o.connect(flt); o.start(when); o.stop(when + dur + 0.1);
+    });
+    out.gain.setValueAtTime(0, when);
+    out.gain.linearRampToValueAtTime(vel, when + 0.7);
+    out.gain.setValueAtTime(vel, when + Math.max(0.7, dur - 0.7));
+    out.gain.linearRampToValueAtTime(0, when + dur);
+  }
+
+  function bass(midi, when, dur, vel) {
+    const f = freq(midi);
+    const out = ctx.createGain();
+    const flt = ctx.createBiquadFilter(); flt.type = "lowpass"; flt.frequency.value = 340;
+    out.connect(flt); flt.connect(master);
+    const o1 = ctx.createOscillator(); o1.type = "sine"; o1.frequency.value = f;
+    const o2 = ctx.createOscillator(); o2.type = "triangle"; o2.frequency.value = f;
+    const g2o = ctx.createGain(); g2o.gain.value = 0.35;
+    o1.connect(out); o2.connect(g2o); g2o.connect(out);
+    o1.start(when); o2.start(when); o1.stop(when + dur + 0.1); o2.stop(when + dur + 0.1);
+    out.gain.setValueAtTime(0, when);
+    out.gain.linearRampToValueAtTime(vel, when + 0.02);
+    out.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+  }
+
+  function pluck(midi, when, vel) {
+    const f = freq(midi);
+    const out = ctx.createGain(); out.connect(melodyBus);
+    const o = ctx.createOscillator(); o.type = "triangle"; o.frequency.value = f;
+    const o2 = ctx.createOscillator(); o2.type = "sine"; o2.frequency.value = f * 2;
+    const g2o = ctx.createGain(); g2o.gain.value = 0.25;
+    o.connect(out); o2.connect(g2o); g2o.connect(out);
+    o.start(when); o2.start(when); o.stop(when + 0.5); o2.stop(when + 0.5);
+    out.gain.setValueAtTime(vel, when);
+    out.gain.exponentialRampToValueAtTime(0.0001, when + 0.46);
+  }
+
+  function bell(midi, when, vel) {
+    const f = freq(midi);
+    const out = ctx.createGain(); out.connect(melodyBus); out.connect(verb);
+    [[1, 1], [2.76, 0.35], [5.4, 0.12]].forEach(([mult, gv]) => {
+      const o = ctx.createOscillator(); o.type = "sine"; o.frequency.value = f * mult;
+      const og = ctx.createGain(); og.gain.value = gv; o.connect(og); og.connect(out);
+      o.start(when); o.stop(when + 1.4);
+    });
+    out.gain.setValueAtTime(vel, when);
+    out.gain.exponentialRampToValueAtTime(0.0001, when + 1.3);
+  }
+
+  function kick(when, vel) {
+    const o = ctx.createOscillator(); o.type = "sine";
+    o.frequency.setValueAtTime(150, when);
+    o.frequency.exponentialRampToValueAtTime(44, when + 0.13);
+    const out = ctx.createGain(); o.connect(out); out.connect(percBus);
+    out.gain.setValueAtTime(vel, when);
+    out.gain.exponentialRampToValueAtTime(0.0001, when + 0.28);
+    o.start(when); o.stop(when + 0.3);
+  }
+
+  function hat(when, vel, open) {
+    const src = ctx.createBufferSource(); src.buffer = noiseBuf;
+    const flt = ctx.createBiquadFilter(); flt.type = "highpass"; flt.frequency.value = 8200;
+    const out = ctx.createGain(); src.connect(flt); flt.connect(out); out.connect(percBus);
+    const dur = open ? 0.22 : 0.055;
+    out.gain.setValueAtTime(vel, when);
+    out.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    src.start(when, R()); src.stop(when + dur + 0.02);
+  }
+
+  function swell(when, dur) {
+    const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    const flt = ctx.createBiquadFilter(); flt.type = "bandpass"; flt.Q.value = 1.1;
+    flt.frequency.setValueAtTime(380, when);
+    flt.frequency.exponentialRampToValueAtTime(4200, when + dur);
+    const out = ctx.createGain(); src.connect(flt); flt.connect(out); out.connect(percBus); out.connect(verb);
+    out.gain.setValueAtTime(0.0001, when);
+    out.gain.linearRampToValueAtTime(0.075, when + dur);
+    out.gain.linearRampToValueAtTime(0.0001, when + dur + 0.4);
+    src.start(when); src.stop(when + dur + 0.5);
+  }
+
+  // ---------- composition ----------
+  const chords = [
+    { bass: 45, pad: [57, 60, 64, 67, 71], arp: [57, 64, 71, 67, 60, 64, 71, 76] }, // Am9
+    { bass: 41, pad: [53, 57, 60, 64, 67], arp: [53, 60, 67, 64, 57, 60, 69, 72] }, // Fmaj9
+    { bass: 36, pad: [60, 64, 67, 71, 74], arp: [60, 67, 74, 71, 64, 67, 76, 79] }, // Cmaj9
+    { bass: 43, pad: [55, 59, 62, 69, 72], arp: [55, 62, 69, 72, 59, 62, 76, 79] }, // Gadd9
+    { bass: 45, pad: [57, 60, 64, 67, 74], arp: [57, 64, 72, 76, 71, 67, 64, 69] }, // Am11
+    { bass: 45, pad: [57, 60, 64, 69, 71], arp: [57, 64, 71, 76, 72, 67, 64, 69] }  // Am9 tonic
+  ];
+  // melody: [midi, beatInBar]
+  const melody = [
+    [[69,0],[72,1],[76,2],[74,3]],
+    [[77,0],[76,1],[72,2],[69,3]],
+    [[71,0],[74,1],[79,2],[76,3]],
+    [[81,0],[79,1],[76,2],[74,3]],
+    [[76,0],[74,1],[72,2],[71,3]],
+    [[69,0],[71,1],[72,2],[69,3]]
+  ];
+  const melVel = [0.17, 0.19, 0.21, 0.25, 0.19, 0.17];
+
+  for (let bar = 0; bar < 6; bar++) {
+    const bs = bar * barLen, ch = chords[bar];
+    ch.pad.forEach(m => padNote(m, t0 + bs, barLen + 0.15, bar === 5 ? 0.042 : 0.034));
+    bass(ch.bass, t0 + bs, 1.25, 0.20);
+    bass(ch.bass, t0 + bs + 1.25, 0.95, 0.15);
+    if (bar === 5) bass(ch.bass, t0 + bs + 1.875, 2.4, 0.16);
+
+    melody[bar].forEach(([m, b], i) => {
+      const tt = bs + b * beat;
+      const isFinal = (bar === 5 && i === 3);
+      piano(m, t0 + tt, isFinal ? 1.55 : 0.95, isFinal ? 0.22 : melVel[bar]);
+      ev(tt, isFinal ? 1 : 0.55);
+    });
+
+    if (bar >= 1 && bar <= 4) {
+      for (let i = 0; i < 8; i++) {
+        const tt = bs + i * eighth;
+        const m = ch.arp[i];
+        const v = (i % 2 === 0 ? 0.085 : 0.05) * (bar === 3 ? 1.25 : 1);
+        pluck(m, t0 + tt, v); ev(tt, 0.28);
+        if (bar === 3) pluck(m + 12, t0 + tt, 0.028);
+      }
+    }
+    if (bar >= 2 && bar <= 4) {
+      kick(t0 + bs, 0.24); kick(t0 + bs + 1.25, 0.19); ev(bs, 0.7); ev(bs + 1.25, 0.5);
+      [0.3125, 0.9375, 1.5625, 2.1875].forEach((o, i) => hat(t0 + bs + o, i === 3 ? 0.05 : 0.035, i === 3));
+    }
+    if (bar === 1) hat(t0 + bs + 1.25, 0.022, false);
+    if (bar === 3) swell(t0 + bs, 1.9);
+  }
+
+  // final shimmer
+  bell(81, t0 + 13.75, 0.07); ev(13.75, 0.4);
+  bell(84, t0 + 14.375, 0.06); ev(14.375, 0.4);
+  bell(76, t0 + 14.375, 0.05);
+
+  // ---------- visuals ----------
+  const cx = W / 2, cy = H * 0.47;
+  const stars = [], embers = [];
+  for (let i = 0; i < 110; i++) stars.push({ x: R() * W, y: R() * H * 0.85, r: 0.6 + R() * 1.8, ph: R() * 6.28 });
+  for (let i = 0; i < 150; i++) embers.push({ x: R() * W, y: R() * H, s: 1 + R() * 2.6, sp: 18 + R() * 55, ph: R() * 6.28, h: R() * 36 });
+
+  const bg = g2.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#05060f"); bg.addColorStop(0.55, "#120826"); bg.addColorStop(1, "#07030d");
+
+  const clamp01 = v => Math.max(0, Math.min(1, v));
+  const smooth = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+
+  function petal(len, wid, hue, alpha) {
+    g2.beginPath();
+    g2.moveTo(0, 0);
+    g2.bezierCurveTo(wid, -len * 0.28, wid * 0.62, -len * 0.86, 0, -len);
+    g2.bezierCurveTo(-wid * 0.62, -len * 0.86, -wid, -len * 0.28, 0, 0);
+    g2.closePath();
+    g2.fillStyle = `hsla(${hue},88%,64%,${alpha})`;
+    g2.fill();
+    g2.strokeStyle = `hsla(${hue + 40},100%,82%,${alpha * 0.55})`;
+    g2.lineWidth = 1.2; g2.stroke();
+  }
+
+  function draw(t) {
+    const p = clamp01(t / D);
+    let inten = 0;
+    for (let i = 0; i < events.length; i++) {
+      const e = events[i], age = t - e.t;
+      if (age >= 0 && age < 1.1) inten += e.v * Math.exp(-age * 3.2);
+    }
+    const hue = 262 + p * 145; // purple -> pink -> gold
+    const bloom = 0.16 + 0.84 * (1 - Math.exp(-p * 2.4));
+    const rot = t * (0.14 + p * 0.55);
+    const pulse = 1 + inten * 0.16 + Math.sin(t * 2.1) * 0.02;
+
+    g2.fillStyle = bg; g2.fillRect(0, 0, W, H);
+
+    // stars
+    for (const s of stars) {
+      const a = 0.25 + 0.55 * (0.5 + 0.5 * Math.sin(t * 0.8 + s.ph));
+      g2.fillStyle = `rgba(230,235,255,${a * 0.7})`;
+      g2.beginPath(); g2.arc(s.x, s.y, s.r, 0, 6.283); g2.fill();
+    }
+
+    // halo
+    const haloR = (180 + bloom * 330) * pulse;
+    const halo = g2.createRadialGradient(cx, cy, 10, cx, cy, haloR);
+    halo.addColorStop(0, `hsla(${hue},90%,62%,${0.30 + bloom * 0.18})`);
+    halo.addColorStop(0.45, `hsla(${hue + 35},85%,50%,${0.10 + bloom * 0.08})`);
+    halo.addColorStop(1, "rgba(0,0,0,0)");
+    g2.fillStyle = halo; g2.beginPath(); g2.arc(cx, cy, haloR, 0, 6.283); g2.fill();
+
+    // light rays at climax
+    if (bloom > 0.45) {
+      g2.save(); g2.translate(cx, cy); g2.rotate(rot * 0.5);
+      for (let i = 0; i < 8; i++) {
+        g2.rotate(Math.PI / 4);
+        g2.fillStyle = `hsla(${hue},95%,70%,${0.035 + (bloom - 0.45) * 0.05})`;
+        g2.beginPath(); g2.moveTo(0, 0); g2.lineTo(26, -520); g2.lineTo(-26, -520); g2.closePath(); g2.fill();
+      }
+      g2.restore();
+    }
+
+    // outer petals
+    g2.save(); g2.translate(cx, cy); g2.rotate(rot);
+    const Rlen = (105 + bloom * 305) * pulse;
+    for (let i = 0; i < 12; i++) {
+      g2.save(); g2.rotate(i * Math.PI / 6);
+      petal(Rlen, 52 + bloom * 28, hue + i * 5 - 20, 0.20 + bloom * 0.22);
+      g2.restore();
+    }
+    g2.restore();
+
+    // inner petals, counter-rotating
+    g2.save(); g2.translate(cx, cy); g2.rotate(-rot * 1.7);
+    const rlen2 = (55 + bloom * 150) * pulse;
+    for (let i = 0; i < 8; i++) {
+      g2.save(); g2.rotate(i * Math.PI / 4 + 0.39);
+      petal(rlen2, 30 + bloom * 16, hue + 55 + i * 6, 0.28 + bloom * 0.30);
+      g2.restore();
+    }
+    g2.restore();
+
+    // rings + prism triangle
+    g2.save(); g2.translate(cx, cy);
+    for (let i = 0; i < 3; i++) {
+      const rr = (42 + i * 38) * (0.7 + bloom * 0.45) * pulse;
+      g2.strokeStyle = `hsla(${hue + i * 18},90%,75%,${0.55 - i * 0.13})`;
+      g2.lineWidth = 1.6; g2.beginPath(); g2.arc(0, 0, rr, 0, 6.283); g2.stroke();
+    }
+    g2.rotate(-rot * 0.8);
+    const tri = (46 + bloom * 44) * pulse;
+    g2.strokeStyle = `hsla(${hue + 70},100%,86%,0.95)`; g2.lineWidth = 2.4;
+    g2.beginPath();
+    for (let i = 0; i < 3; i++) {
+      const a = -Math.PI / 2 + i * Math.PI * 2 / 3;
+      const x = Math.cos(a) * tri, y = Math.sin(a) * tri;
+      i === 0 ? g2.moveTo(x, y) : g2.lineTo(x, y);
+    }
+    g2.closePath(); g2.stroke();
+    g2.restore();
+
+    // note ripples
+    for (const e of events) {
+      const age = t - e.t;
+      if (age >= 0 && age < 1.35) {
+        const rr = 20 + age * 330;
+        g2.strokeStyle = `hsla(${hue + 30},100%,80%,${(1 - age / 1.35) * 0.42 * e.v + 0.04})`;
+        g2.lineWidth = 1.4; g2.beginPath(); g2.arc(cx, cy, rr, 0, 6.283); g2.stroke();
+      }
+    }
+
+    // central orb
+    const orbR = (20 + bloom * 34 + inten * 14) * pulse;
+    const orb = g2.createRadialGradient(cx, cy, 0, cx, cy, orbR);
+    orb.addColorStop(0, "rgba(255,255,255,0.98)");
+    orb.addColorStop(0.35, `hsla(${hue + 25},100%,72%,0.9)`);
+    orb.addColorStop(1, `hsla(${hue},90%,55%,0)`);
+    g2.fillStyle = orb; g2.beginPath(); g2.arc(cx, cy, orbR, 0, 6.283); g2.fill();
+
+    // rising embers
+    for (const e of embers) {
+      const yy = ((e.y - t * e.sp) % H + H) % H;
+      const xx = e.x + Math.sin(t * 0.7 + e.ph) * 22;
+      const tw = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * 1.6 + e.ph));
+      g2.fillStyle = `hsla(${hue + e.h},95%,72%,${0.28 * tw * (0.3 + bloom)})`;
+      g2.beginPath(); g2.arc(xx, yy, e.s, 0, 6.283); g2.fill();
+    }
+
+    // horizon silhouette
+    g2.fillStyle = "rgba(3,2,10,0.9)";
+    g2.beginPath(); g2.moveTo(0, H);
+    g2.lineTo(0, H * 0.82);
+    g2.lineTo(W * 0.18, H * 0.76); g2.lineTo(W * 0.34, H * 0.815);
+    g2.lineTo(W * 0.52, H * 0.755); g2.lineTo(W * 0.70, H * 0.815);
+    g2.lineTo(W * 0.86, H * 0.77); g2.lineTo(W, H * 0.825);
+    g2.lineTo(W, H); g2.closePath(); g2.fill();
+
+    // title + progress
+    g2.textAlign = "center";
+    g2.fillStyle = `hsla(${hue},85%,86%,0.92)`;
+    g2.font = "600 33px Georgia, 'Times New Roman', serif";
+    g2.fillText("P R I S M   F A L L I N G   U P", W / 2, H - 78);
+    g2.fillStyle = "rgba(255,255,255,0.18)";
+    g2.fillRect(W / 2 - 190, H - 52, 380, 2);
+    g2.fillStyle = `hsla(${hue + 20},95%,72%,0.95)`;
+    g2.fillRect(W / 2 - 190, H - 52, 380 * p, 2);
+
+    // vignette
+    const vg = g2.createRadialGradient(cx, H * 0.5, H * 0.25, cx, H * 0.5, H * 0.75);
+    vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,0.55)");
+    g2.fillStyle = vg; g2.fillRect(0, 0, W, H);
+  }
+
+  function frame() {
+    const t = Math.max(0, ctx.currentTime - t0);
+    draw(t);
+    if (t < D + 0.6) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+```

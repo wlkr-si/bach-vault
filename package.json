@@ -1,0 +1,24 @@
+{
+  "name": "bach-vault",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node scripts/build.ts",
+    "integrity": "node scripts/integrity.ts",
+    "determinism": "node scripts/build.ts --check",
+    "typecheck": "tsc",
+    "lint": "eslint scripts bench/scores"
+  },
+  "dependencies": {
+    "playwright": "1.65.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "eslint": "10.15.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.73.0"
+  }
+}

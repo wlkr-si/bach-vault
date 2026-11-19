@@ -1,0 +1,1803 @@
+```javascript
+export const title = "The Astrarium Fugue";
+
+export function start({ audioContext, canvas, duration = 15, random = Math.random }) {
+  if (audioContext.state === "suspended" && typeof audioContext.resume === "function") {
+    audioContext.resume().catch(() => {});
+  }
+
+  const W = canvas.width || 1080;
+  const H = canvas.height || 1350;
+  if (!canvas.width) canvas.width = W;
+  if (!canvas.height) canvas.height = H;
+
+  const ctx = canvas.getContext("2d", { alpha: false }) || canvas.getContext("2d");
+  const timeScale = duration / 15;
+
+  // ============================================================================
+  // 1. EXPRESSIVE TIME MAP (146 BPM + Human Cadential Ritardando -> Picardy Coda)
+  // ============================================================================
+  const LEAD_IN = 0.045 * timeScale;
+  const BASE_STEP = (60 / 146 / 4) * timeScale; // 16th note ≈ 0.10274s
+  const TOTAL_STEPS = 140;
+  const stepTimes = new Float64Array(TOTAL_STEPS + 1);
+  stepTimes[0] = 0;
+  for (let s = 0; s < TOTAL_STEPS; s++) {
+    let stretch = 1.0;
+    if (s >= 118 && s < 128) {
+      // Organic Baroque cadential ritardando across final 2.5 beats of Bar 8
+      const u = (s - 118) / 9;
+      stretch = 1.0 + 0.56 * u * u;
+    } else if (s >= 128) {
+      stretch = 1.22;
+    }
+    stepTimes[s + 1] = stepTimes[s] + BASE_STEP * stretch;
+  }
+
+  function stepToSec(step) {
+    if (step <= 0) return 0;
+    if (step >= TOTAL_STEPS) return stepTimes[TOTAL_STEPS] + (step - TOTAL_STEPS) * BASE_STEP * 1.22;
+    const i = Math.floor(step);
+    const f = step - i;
+    return stepTimes[i] + f * (stepTimes[i + 1] - stepTimes[i]);
+  }
+
+  function secToStep(sec) {
+    if (sec <= 0) return 0;
+    if (sec >= stepTimes[TOTAL_STEPS]) {
+      return TOTAL_STEPS + (sec - stepTimes[TOTAL_STEPS]) / (BASE_STEP * 1.22);
+    }
+    let lo = 0, hi = TOTAL_STEPS;
+    while (lo + 1 < hi) {
+      const mid = (lo + hi) >> 1;
+      if (stepTimes[mid] <= sec) lo = mid;
+      else hi = mid;
+    }
+    const span = stepTimes[lo + 1] - stepTimes[lo];
+    return lo + (span > 0 ? (sec - stepTimes[lo]) / span : 0);
+  }
+
+  const PICARDY_SEC = stepToSec(128); // ~13.45s: Grand D Major Picardy Downbeat
+
+  // ============================================================================
+  // 2. FOUR-VOICE CONTRAPUNTAL SCORE (D Minor -> Circle of 5ths -> Stretto -> D Major)
+  // ============================================================================
+  // Format: [step, midi, durSteps, velocity]
+  // Voice 0: Soprano Crystal Harpsichord-Lute
+  const v0Raw = [
+    // Bar 1: Fugue Subject in D minor
+    [0, 74, 2, 0.88], [2, 81, 2, 0.94], [4, 77, 2, 0.85], [6, 76, 1, 0.77], [7, 74, 1, 0.75],
+    [8, 73, 1, 0.84], [9, 74, 1, 0.77], [10, 76, 1, 0.81], [11, 79, 1, 0.92],
+    [12, 77, 1, 0.85], [13, 76, 1, 0.79], [14, 74, 1, 0.76], [15, 73, 1, 0.84],
+    // Bar 2: Countersubject w/ 4-3 suspension & Clausula Vera over A minor Answer
+    [16, 74, 1, 0.88], [17, 72, 1, 0.80], [18, 71, 1, 0.77], [19, 72, 1, 0.79],
+    [20, 69, 2, 0.85], [22, 74, 1, 0.81], [23, 72, 1, 0.79],
+    [24, 71, 2, 0.87], [26, 76, 2, 0.89], [28, 81, 2, 0.92], [30, 76, 1, 0.82], [31, 74, 1, 0.85],
+    // Bar 3: Circle of Fifths 16th-note Bariolage (Am -> D7/F# -> Gm -> C7/E)
+    [32, 72, 1, 0.87], [33, 76, 1, 0.77], [34, 81, 1, 0.89], [35, 76, 1, 0.77],
+    [36, 78, 1, 0.88], [37, 74, 1, 0.77], [38, 81, 1, 0.91], [39, 74, 1, 0.77],
+    [40, 79, 1, 0.89], [41, 74, 1, 0.77], [42, 82, 1, 0.93], [43, 79, 1, 0.79],
+    [44, 76, 1, 0.87], [45, 72, 1, 0.77], [46, 79, 1, 0.91], [47, 72, 1, 0.79],
+    // Bar 4: Circle of Fifths cont. (Fmaj7 -> Bbmaj7 -> Edim7 -> A7/C#)
+    [48, 77, 1, 0.89], [49, 72, 1, 0.77], [50, 81, 1, 0.93], [51, 76, 1, 0.83],
+    [52, 74, 1, 0.89], [53, 70, 1, 0.77], [54, 81, 1, 0.93], [55, 77, 1, 0.81],
+    [56, 79, 1, 0.91], [57, 76, 1, 0.81], [58, 70, 1, 0.83], [59, 79, 1, 0.91],
+    [60, 77, 1, 0.92], [61, 76, 1, 0.87], [62, 74, 1, 0.89], [63, 73, 1, 0.93],
+    // Bar 5: Act III Stretto Leader
+    [64, 74, 2, 0.96], [66, 81, 2, 0.98], [68, 82, 2, 0.97], [70, 81, 1, 0.89], [71, 79, 1, 0.87],
+    [72, 79, 1, 0.93], [73, 77, 1, 0.87], [74, 76, 1, 0.86], [75, 74, 1, 0.86],
+    [76, 73, 1, 0.93], [77, 76, 1, 0.89], [78, 81, 1, 0.96], [79, 79, 1, 0.91],
+    // Bar 6: G#dim7 Thunderbolt & Summit D6
+    [80, 77, 1, 0.93], [81, 74, 1, 0.85], [82, 81, 1, 0.95], [83, 77, 1, 0.87],
+    [84, 83, 1, 0.99], [85, 80, 1, 0.91], [86, 77, 1, 0.89], [87, 74, 1, 0.89],
+    [88, 74, 1, 0.93], [89, 77, 1, 0.93], [90, 81, 1, 0.97], [91, 86, 1, 1.00],
+    [92, 85, 1, 0.97], [93, 82, 1, 0.93], [94, 81, 1, 0.91], [95, 79, 1, 0.91],
+    // Bar 7: Dominant Pedal Bariolage
+    [96, 77, 1, 0.95], [97, 81, 1, 0.91], [98, 86, 1, 0.99], [99, 81, 1, 0.89],
+    [100, 79, 1, 0.95], [101, 76, 1, 0.87], [102, 82, 1, 0.97], [103, 79, 1, 0.89],
+    [104, 77, 1, 0.95], [105, 74, 1, 0.87], [106, 81, 1, 0.97], [107, 77, 1, 0.89],
+    [108, 76, 1, 0.95], [109, 79, 1, 0.93], [110, 82, 1, 0.97], [111, 73, 1, 0.95],
+    // Bar 8: Grand Cadential Ascent + Baroque Trillo (E-D-E-C#)
+    [112, 74, 1, 0.96], [113, 77, 1, 0.92], [114, 81, 1, 0.96], [115, 77, 1, 0.92],
+    [116, 81, 1, 0.98], [117, 86, 1, 1.00], [118, 81, 1, 0.96], [119, 77, 1, 0.96],
+    [120, 79, 1, 0.98], [121, 77, 1, 0.95], [122, 76, 1, 0.96], [123, 74, 1, 0.96],
+    [124, 76, 1, 0.98], [125, 74, 1, 0.95], [126, 76, 1, 0.99], [127, 73, 1, 1.00],
+    // Bar 9 / Coda: Sunlit D Major Picardy Resolution & Ascending Prism Arpeggio
+    [128, 74, 8, 1.00], [129, 78, 7, 0.88], [130, 81, 6, 0.86], [131.2, 86, 6, 0.92]
+  ];
+
+  // Voice 1: Alto Silver Theorbo-Lute
+  const v1Raw = [
+    // Bar 1: Delicate chamber pizzicato grounding
+    [0, 50, 3, 0.50], [4, 53, 2, 0.38], [8, 45, 3, 0.48], [12, 49, 2, 0.42],
+    // Bar 2: Real Answer in A minor
+    [16, 57, 2, 0.90], [18, 64, 2, 0.94], [20, 60, 2, 0.86], [22, 59, 1, 0.78], [23, 57, 1, 0.77],
+    [24, 56, 1, 0.85], [25, 57, 1, 0.79], [26, 59, 1, 0.82], [27, 62, 1, 0.90],
+    [28, 60, 1, 0.86], [29, 59, 1, 0.80], [30, 57, 1, 0.78], [31, 56, 1, 0.86],
+    // Bar 3: 7th Suspensions across Circle of Fifths
+    [32, 57, 2, 0.82], [34, 64, 2, 0.80], [36, 60, 4, 0.86],
+    [40, 58, 2, 0.84], [42, 62, 2, 0.80], [44, 58, 4, 0.86],
+    // Bar 4: Circle of Fifths cont.
+    [48, 57, 2, 0.84], [50, 60, 2, 0.82], [52, 62, 2, 0.85], [54, 65, 2, 0.84],
+    [56, 58, 4, 0.88], [60, 57, 2, 0.88], [62, 67, 2, 0.90],
+    // Bar 5: Stretto Inner Canon
+    [64, 65, 4, 0.88], [68, 62, 2, 0.88], [70, 65, 2, 0.88],
+    [72, 67, 2, 0.90], [74, 70, 2, 0.92], [76, 69, 2, 0.90], [78, 67, 2, 0.92],
+    // Bar 6: Chromatic Diminished-7th Tension
+    [80, 65, 4, 0.90], [84, 65, 2, 0.92], [86, 68, 2, 0.94],
+    [88, 69, 4, 0.95], [92, 70, 2, 0.93], [94, 67, 2, 0.92],
+    // Bar 7: Dominant Pedal Counter-melody
+    [96, 65, 2, 0.90], [98, 69, 2, 0.90], [100, 67, 2, 0.90], [102, 70, 2, 0.92],
+    [104, 69, 2, 0.92], [106, 65, 2, 0.90], [108, 67, 2, 0.92], [110, 64, 2, 0.92],
+    // Bar 8: Climbing Sixth/Thirds + 4-3 Suspension & 7th
+    [112, 62, 2, 0.92], [114, 65, 2, 0.93], [116, 69, 2, 0.95], [118, 74, 2, 0.97],
+    [120, 74, 4, 0.98], [124, 67, 4, 0.97],
+    // Bar 9: Resolves G4 -> F#4 (The Picardy Major Third!)
+    [128, 66, 9, 0.98], [128.5, 69, 8.5, 0.86]
+  ];
+
+  // Voice 2: Singing Bowed Viol / Analog Cello-Horn
+  const v2Raw = [
+    // Subtle Bar 2 pizzicato support before bowed entry in Bar 3
+    // Bar 3: Singing Bowed Viol Entry — Circle of Fifths Bass/Tenor
+    [32, 45, 4, 0.88], [36, 50, 2, 0.85], [38, 54, 2, 0.91],
+    [40, 55, 4, 0.90], [44, 48, 2, 0.86], [46, 52, 2, 0.91],
+    // Bar 4: Fmaj7 -> Bbmaj7 -> Edim7 -> A7/C#
+    [48, 53, 4, 0.91], [52, 46, 4, 0.92],
+    [56, 52, 2, 0.91], [58, 55, 2, 0.89], [60, 45, 2, 0.94], [62, 49, 2, 0.96],
+    // Bar 5: Stretto Tenor Subject Entry!
+    [64, 50, 4, 0.91], [68, 50, 2, 0.95], [70, 57, 2, 0.96],
+    [72, 58, 2, 0.93], [74, 55, 2, 0.89], [76, 52, 2, 0.91], [78, 49, 2, 0.95],
+    // Bar 6: G#dim7 -> Cadential 6/4
+    [80, 50, 4, 0.92], [84, 59, 2, 0.95], [86, 62, 2, 0.95],
+    [88, 57, 4, 0.96], [92, 55, 2, 0.93], [94, 52, 2, 0.94],
+    // Bar 7: Polyphonic Drive over Dominant Pedal
+    [96, 62, 4, 0.93], [100, 58, 2, 0.91], [102, 55, 2, 0.91],
+    [104, 53, 4, 0.93], [108, 52, 2, 0.93], [110, 49, 2, 0.95],
+    // Bar 8: Tenor Climb & Grand 4-3 Suspension (D4 -> C#4)
+    [112, 50, 2, 0.94], [114, 53, 2, 0.95], [116, 57, 2, 0.96], [118, 62, 2, 0.97],
+    [120, 62, 4, 1.00], [124, 61, 4, 1.00],
+    // Bar 9: Resolves C#4 -> D4
+    [128, 62, 9.5, 0.98]
+  ];
+
+  // Voice 3: Cathedral 32' Pedal Organ (with quiet pizzicato in Bar 2)
+  const v3Raw = [
+    // Bar 2: Soft acoustic bass pizzicato (flagged with vel < 0.55)
+    [16, 45, 3, 0.44], [20, 48, 2, 0.40], [24, 40, 3, 0.46], [28, 45, 2, 0.42], [30, 40, 2, 0.44],
+    // Bar 5: Full 32' Cathedral Pipe Pedal Ignition!
+    [64, 38, 8, 0.95], [72, 43, 4, 0.90], [76, 45, 4, 0.92],
+    // Bar 6: Chromatic Ascent F2 -> G#2 -> A2
+    [80, 41, 4, 0.93], [84, 44, 4, 0.97], [88, 45, 8, 0.98],
+    // Bar 7: Mighty Dominant Pedal A1/A2
+    [96, 33, 8, 0.96], [104, 33, 8, 0.96],
+    // Bar 8: Dominant Pedal Climax
+    [112, 33, 8, 0.98], [120, 33, 8, 1.00],
+    // Bar 9: Glorious D2/D1 Pedal Foundation
+    [128, 38, 10, 1.00]
+  ];
+
+  // Baroque Kettle Timpani Strikes [step, midi, velocity]
+  const timpaniRaw = [
+    [64, 38, 0.92], [76, 45, 0.72], [84, 44, 0.85], [88, 45, 0.90],
+    [96, 45, 0.84], [104, 45, 0.82], [112, 45, 0.86],
+    [120, 45, 0.94], [124, 45, 0.82], [126, 45, 0.88],
+    [128, 38, 1.00]
+  ];
+
+  // Compile unified note events for Audio + Visual choreography
+  const allNotes = [];
+  const rawVoices = [v0Raw, v1Raw, v2Raw, v3Raw];
+  for (let v = 0; v < 4; v++) {
+    for (const [step, midi, durSteps, vel] of rawVoices[v]) {
+      const startSec = stepToSec(step);
+      const endSec = stepToSec(step + durSteps);
+      allNotes.push({
+        voice: v,
+        step,
+        durSteps,
+        midi,
+        vel,
+        startSec,
+        endSec,
+        durSec: Math.max(0.04, endSec - startSec)
+      });
+    }
+  }
+  allNotes.sort((a, b) => a.startSec - b.startSec);
+
+  const timpaniEvents = timpaniRaw.map(([step, midi, vel]) => ({
+    step,
+    midi,
+    vel,
+    startSec: stepToSec(step)
+  }));
+
+  // ============================================================================
+  // 3. WEB AUDIO SYNTHESIS & CONCERT HALL ENGINE
+  // ============================================================================
+  const sr = audioContext.sampleRate;
+  const t0 = audioContext.currentTime + LEAD_IN;
+  const pieceEndAudio = t0 + duration - LEAD_IN;
+
+  // Master Bus: High-headroom summing -> Warm tanh saturation -> Limiter -> Analyser -> Destination
+  const masterGain = audioContext.createGain();
+  masterGain.gain.setValueAtTime(0.90, audioContext.currentTime);
+  masterGain.gain.setValueAtTime(0.90, Math.max(audioContext.currentTime, pieceEndAudio - 0.52 * timeScale));
+  masterGain.gain.linearRampToValueAtTime(0.0001, Math.max(audioContext.currentTime + 0.05, pieceEndAudio - 0.03));
+  masterGain.gain.setValueAtTime(0.0, Math.max(audioContext.currentTime + 0.06, pieceEndAudio));
+
+  // Subtle warm analog tape/tube saturator curve
+  const saturator = audioContext.createWaveShaper();
+  const satCurve = new Float32Array(2049);
+  const kDrive = 1.18;
+  const kNorm = Math.tanh(kDrive);
+  for (let i = 0; i < 2049; i++) {
+    const x = (i / 1024) - 1;
+    satCurve[i] = Math.tanh(x * kDrive) / kNorm;
+  }
+  saturator.curve = satCurve;
+  saturator.oversample = "2x";
+
+  const limiter = audioContext.createDynamicsCompressor();
+  limiter.threshold.value = -5.5;
+  limiter.knee.value = 6.0;
+  limiter.ratio.value = 7.0;
+  limiter.attack.value = 0.003;
+  limiter.release.value = 0.14;
+
+  const analyser = audioContext.createAnalyser();
+  analyser.fftSize = 512;
+  analyser.smoothingTimeConstant = 0.78;
+  const freqData = new Uint8Array(analyser.frequencyBinCount);
+  const timeData = new Uint8Array(analyser.fftSize);
+
+  const dryBus = audioContext.createGain();
+  dryBus.gain.value = 0.86;
+
+  // Custom Stereo Cathedral Impulse Response (Early Stone Reflections + Frequency-Damped Tail)
+  const hallLen = Math.floor(sr * 2.15);
+  const hallBuf = audioContext.createBuffer(2, hallLen, sr);
+  const earlyTapsL = [[0.011, 0.42], [0.023, -0.31], [0.037, 0.25], [0.053, 0.19], [0.071, -0.15]];
+  const earlyTapsR = [[0.014, 0.40], [0.027, -0.33], [0.041, 0.24], [0.059, -0.18], [0.079, 0.14]];
+  for (let ch = 0; ch < 2; ch++) {
+    const data = hallBuf.getChannelData(ch);
+    const taps = ch === 0 ? earlyTapsL : earlyTapsR;
+    for (const [delaySec, amp] of taps) {
+      const idx = Math.floor(delaySec * sr);
+      if (idx < hallLen) data[idx] += amp;
+    }
+    let lp = 0;
+    for (let i = Math.floor(0.012 * sr); i < hallLen; i++) {
+      const t = i / sr;
+      const env = Math.exp(-t * 2.45) * (1 - Math.exp(-t * 35));
+      const damp = 0.18 + 0.55 * Math.exp(-t * 1.9);
+      const white = random() * 2 - 1;
+      lp += damp * (white - lp);
+      data[i] += lp * env * 0.34;
+    }
+  }
+  const convolver = audioContext.createConvolver();
+  convolver.buffer = hallBuf;
+  const reverbHighpass = audioContext.createBiquadFilter();
+  reverbHighpass.type = "highpass";
+  reverbHighpass.frequency.value = 125;
+  const wetBus = audioContext.createGain();
+  wetBus.gain.value = 0.31;
+
+  // Stereo Ping-Pong Shimmer Delay for Crystal Lute Voices
+  const delayL = audioContext.createDelay(1.0);
+  const delayR = audioContext.createDelay(1.0);
+  delayL.delayTime.value = BASE_STEP * 2;
+  delayR.delayTime.value = BASE_STEP * 3;
+  const delayFb = audioContext.createGain();
+  delayFb.gain.value = 0.18;
+  const delayFilter = audioContext.createBiquadFilter();
+  delayFilter.type = "lowpass";
+  delayFilter.frequency.value = 3400;
+  const delaySend = audioContext.createGain();
+  delaySend.gain.value = 0.14;
+  const delayMerger = audioContext.createChannelMerger(2);
+
+  delaySend.connect(delayFilter);
+  delayFilter.connect(delayL);
+  delayL.connect(delayR);
+  delayR.connect(delayFb);
+  delayFb.connect(delayFilter);
+  delayL.connect(delayMerger, 0, 0);
+  delayR.connect(delayMerger, 0, 1);
+
+  reverbHighpass.connect(convolver);
+  convolver.connect(wetBus);
+
+  dryBus.connect(saturator);
+  wetBus.connect(saturator);
+  delayMerger.connect(saturator);
+  saturator.connect(limiter);
+  limiter.connect(masterGain);
+  masterGain.connect(analyser);
+  analyser.connect(audioContext.destination);
+
+  function midiToFreq(midi) {
+    return 440 * Math.pow(2, (midi - 69) / 12);
+  }
+
+  // Shared 1.5s white noise buffer (seeded cleanly from supplied random())
+  const noiseLen = Math.floor(sr * 1.5);
+  const noiseBuf = audioContext.createBuffer(1, noiseLen, sr);
+  {
+    const nd = noiseBuf.getChannelData(0);
+    for (let i = 0; i < noiseLen; i++) nd[i] = random() * 2 - 1;
+  }
+
+  // ----------------------------------------------------------------------------
+  // Physical-Modeling Thiran-Allpass Karplus-Strong Plucked String Bank
+  // Tuned to < 0.01 cents accuracy across all registers
+  // ----------------------------------------------------------------------------
+  const ksCache = new Map();
+  function getPluckBuffer(midi, timbre) {
+    const key = midi * 4 + timbre;
+    if (ksCache.has(key)) return ksCache.get(key);
+
+    const freq = midiToFreq(midi);
+    const P = sr / freq;
+    // timbre 0: Soprano Crystal Harpsichord-Lute; timbre 1: Alto Rosewood Theorbo; timbre 2: Bass Pizzicato
+    const damp = timbre === 0 ? 0.24 : (timbre === 1 ? 0.34 : 0.46);
+    const remDelay = P - damp;
+    const N = Math.max(2, Math.floor(remDelay - 0.5));
+    const frac = remDelay - N; // in [0.5, 1.5) -> unconditionally stable Thiran allpass
+    const apCoeff = (1 - frac) / (1 + frac);
+
+    const sustainPerCycle = timbre === 2
+      ? Math.pow(0.001, 1 / (freq * 0.95))
+      : Math.pow(0.001, 1 / (freq * (timbre === 0 ? 1.85 : 1.65)));
+    const loopGain = Math.min(0.9988, sustainPerCycle);
+
+    const durSamples = Math.floor(sr * (timbre === 2 ? 0.85 : 1.35));
+    const buf = audioContext.createBuffer(1, durSamples, sr);
+    const out = buf.getChannelData(0);
+
+    // Excitation: Pick-position displacement + warm filtered pluck noise (zero-mean)
+    const initLen = N + 2;
+    const ring = new Float64Array(initLen);
+    const pickPos = timbre === 0 ? 0.17 : (timbre === 1 ? 0.29 : 0.42);
+    let lpInit = 0;
+    let mean = 0;
+    const noiseAmt = timbre === 0 ? 0.62 : (timbre === 1 ? 0.52 : 0.36);
+    const lpAlpha = timbre === 0 ? 0.72 : (timbre === 1 ? 0.55 : 0.32);
+
+    for (let i = 0; i < initLen; i++) {
+      const u = i / initLen;
+      const tri = u < pickPos ? (u / pickPos) : ((1 - u) / (1 - pickPos));
+      const w = random() * 2 - 1;
+      lpInit += lpAlpha * (w - lpInit);
+      const val = (tri * 2 - 1) * (1 - noiseAmt) + lpInit * noiseAmt;
+      ring[i] = val;
+      mean += val;
+    }
+    mean /= initLen;
+    for (let i = 0; i < initLen; i++) ring[i] -= mean;
+
+    let writePos = 0;
+    let prevX = 0;
+    let prevAp = 0;
+    // Subtle wooden soundboard body resonator state
+    let bodyY1 = 0, bodyY2 = 0;
+    const bodyOmega = (2 * Math.PI * (timbre === 0 ? 520 : 285)) / sr;
+    const bodyR = 0.985;
+    const bA1 = -2 * bodyR * Math.cos(bodyOmega);
+    const bA2 = bodyR * bodyR;
+
+    const attackSamp = Math.max(8, Math.floor(sr * 0.0022));
+    let peak = 1e-6;
+
+    for (let i = 0; i < durSamples; i++) {
+      const idx0 = (writePos - N + initLen * 4) % initLen;
+      const idx1 = (idx0 - 1 + initLen) % initLen;
+      const lpSample = (1 - damp) * ring[idx0] + damp * ring[idx1];
+      const apOut = apCoeff * lpSample + prevX - apCoeff * prevAp;
+      prevX = lpSample;
+      prevAp = apOut;
+
+      const nextVal = apOut * loopGain;
+      const cur = ring[writePos];
+      ring[writePos] = nextVal;
+      writePos = (writePos + 1) % initLen;
+
+      const bodyOut = cur * 0.015 - bA1 * bodyY1 - bA2 * bodyY2;
+      bodyY2 = bodyY1;
+      bodyY1 = bodyOut;
+
+      let sample = cur + bodyOut * 0.28;
+      if (i < attackSamp) {
+        sample *= 0.5 - 0.5 * Math.cos((Math.PI * i) / attackSamp);
+      }
+      out[i] = sample;
+      const a = Math.abs(sample);
+      if (a > peak) peak = a;
+    }
+
+    const scale = 0.85 / peak;
+    for (let i = 0; i < durSamples; i++) out[i] *= scale;
+
+    ksCache.set(key, buf);
+    return buf;
+  }
+
+  // Schedule Plucked Voice (Soprano, Alto, or Chamber Pizzicato)
+  function schedulePluck(midi, startT, durSec, vel, timbre, panVal, crystalSparkle) {
+    const buf = getPluckBuffer(midi, timbre);
+    const src = audioContext.createBufferSource();
+    src.buffer = buf;
+
+    const filt = audioContext.createBiquadFilter();
+    filt.type = "lowpass";
+    const baseCut = midiToFreq(midi) * (timbre === 0 ? (4.5 + 4.5 * vel) : (3.5 + 3.2 * vel));
+    filt.frequency.setValueAtTime(Math.min(sr * 0.45, baseCut), startT);
+    filt.frequency.exponentialRampToValueAtTime(
+      Math.max(220, Math.min(sr * 0.42, baseCut * 0.42)),
+      startT + Math.max(0.08, durSec + 0.16)
+    );
+
+    const env = audioContext.createGain();
+    const baseGain = (timbre === 0 ? 0.21 : (timbre === 1 ? 0.20 : 0.23)) * vel;
+    const ringTail = timbre === 2 ? 0.14 : 0.095;
+    const stopT = Math.min(pieceEndAudio, startT + Math.min(buf.duration - 0.01, durSec + ringTail));
+
+    env.gain.setValueAtTime(baseGain, startT);
+    env.gain.setValueAtTime(baseGain, Math.max(startT + 0.01, stopT - 0.065));
+    env.gain.linearRampToValueAtTime(0.0001, Math.max(startT + 0.02, stopT));
+
+    const panner = audioContext.createStereoPanner();
+    panner.pan.setValueAtTime(panVal, startT);
+
+    src.connect(filt);
+    filt.connect(env);
+    env.connect(panner);
+    panner.connect(dryBus);
+    panner.connect(reverbHighpass);
+    if (timbre !== 2) panner.connect(delaySend);
+
+    src.start(startT);
+    src.stop(Math.max(startT + 0.03, stopT + 0.01));
+
+    // Delicate Crystalline Glass-Celesta Harmonic on Soprano & Picardy Arpeggio
+    if (crystalSparkle > 0) {
+      const freq = midiToFreq(midi);
+      const car = audioContext.createOscillator();
+      const mod = audioContext.createOscillator();
+      const modGain = audioContext.createGain();
+      const cEnv = audioContext.createGain();
+
+      car.type = "sine";
+      car.frequency.setValueAtTime(freq * 2, startT);
+      mod.type = "sine";
+      mod.frequency.setValueAtTime(freq * 6.005, startT);
+
+      modGain.gain.setValueAtTime(freq * 1.4 * crystalSparkle, startT);
+      modGain.gain.exponentialRampToValueAtTime(0.01, startT + 0.12);
+
+      const cPeak = 0.026 * vel * crystalSparkle;
+      const cStop = Math.min(pieceEndAudio, startT + Math.min(0.45, durSec + 0.18));
+      cEnv.gain.setValueAtTime(0.0001, startT);
+      cEnv.gain.linearRampToValueAtTime(cPeak, startT + 0.004);
+      cEnv.gain.exponentialRampToValueAtTime(0.0001, Math.max(startT + 0.03, cStop));
+
+      mod.connect(modGain);
+      modGain.connect(car.frequency);
+      car.connect(cEnv);
+      cEnv.connect(panner);
+
+      car.start(startT);
+      mod.start(startT);
+      car.stop(Math.max(startT + 0.04, cStop + 0.01));
+      mod.stop(Math.max(startT + 0.04, cStop + 0.01));
+    }
+  }
+
+  // Schedule Singing Bowed Viol / Analog Cello-Horn (Voice 2)
+  function scheduleBowedViol(midi, startT, durSec, vel, panVal) {
+    const freq = midiToFreq(midi);
+    const stopT = Math.min(pieceEndAudio, startT + durSec + 0.06);
+    if (stopT <= startT + 0.02) return;
+
+    const osc1 = audioContext.createOscillator();
+    const osc2 = audioContext.createOscillator();
+    const osc3 = audioContext.createOscillator();
+    osc1.type = "sawtooth";
+    osc2.type = "sawtooth";
+    osc3.type = "triangle";
+    osc1.frequency.setValueAtTime(freq, startT);
+    osc2.frequency.setValueAtTime(freq * 1.0032, startT); // +5.5 cents warm ensemble chorus
+    osc3.frequency.setValueAtTime(freq * 0.9972, startT);
+
+    // Delayed expressive human vibrato on sustained notes
+    if (durSec > 0.26) {
+      const vib = audioContext.createOscillator();
+      const vibGain = audioContext.createGain();
+      vib.frequency.setValueAtTime(5.5, startT);
+      vibGain.gain.setValueAtTime(0.0001, startT);
+      vibGain.gain.linearRampToValueAtTime(freq * 0.0048, startT + Math.min(durSec * 0.65, 0.24));
+      vib.connect(vibGain);
+      vibGain.connect(osc1.frequency);
+      vibGain.connect(osc2.frequency);
+      vib.start(startT);
+      vib.stop(stopT + 0.02);
+    }
+
+    // Bow rosin articulation noise burst
+    const rosin = audioContext.createBufferSource();
+    rosin.buffer = noiseBuf;
+    const rOffset = (midi * 0.037) % 1.0;
+    const rosinBp = audioContext.createBiquadFilter();
+    rosinBp.type = "bandpass";
+    rosinBp.frequency.setValueAtTime(Math.min(4200, freq * 3.2), startT);
+    rosinBp.Q.value = 2.5;
+    const rosinEnv = audioContext.createGain();
+    rosinEnv.gain.setValueAtTime(0.032 * vel, startT);
+    rosinEnv.gain.exponentialRampToValueAtTime(0.0001, startT + 0.055);
+
+    // Warm Cello Body Formant + Dynamic Bow Filter
+    const bodyPeak = audioContext.createBiquadFilter();
+    bodyPeak.type = "peaking";
+    bodyPeak.frequency.value = 540;
+    bodyPeak.Q.value = 1.6;
+    bodyPeak.gain.value = 4.0;
+
+    const lp = audioContext.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.Q.value = 0.9;
+    const fPeak = Math.min(3600, freq * (4.2 + 3.0 * vel));
+    lp.frequency.setValueAtTime(freq * 1.8, startT);
+    lp.frequency.exponentialRampToValueAtTime(fPeak, startT + Math.min(0.07, durSec * 0.35));
+    lp.frequency.exponentialRampToValueAtTime(Math.max(260, fPeak * 0.68), stopT);
+
+    const env = audioContext.createGain();
+    const gPeak = 0.088 * vel;
+    const atk = Math.min(0.038, durSec * 0.28);
+    env.gain.setValueAtTime(0.0001, startT);
+    env.gain.linearRampToValueAtTime(gPeak, startT + atk);
+    env.gain.setValueAtTime(gPeak * 0.88, Math.max(startT + atk + 0.005, stopT - 0.065));
+    env.gain.linearRampToValueAtTime(0.0001, stopT);
+
+    const panner = audioContext.createStereoPanner();
+    panner.pan.setValueAtTime(panVal, startT);
+
+    osc1.connect(bodyPeak);
+    osc2.connect(bodyPeak);
+    osc3.connect(bodyPeak);
+    rosin.connect(rosinBp);
+    rosinBp.connect(rosinEnv);
+    rosinEnv.connect(bodyPeak);
+
+    bodyPeak.connect(lp);
+    lp.connect(env);
+    env.connect(panner);
+    panner.connect(dryBus);
+    panner.connect(reverbHighpass);
+
+    osc1.start(startT);
+    osc2.start(startT);
+    osc3.start(startT);
+    rosin.start(startT, rOffset, 0.08);
+    osc1.stop(stopT + 0.02);
+    osc2.stop(stopT + 0.02);
+    osc3.stop(stopT + 0.02);
+  }
+
+  // Schedule 32' Cathedral Pipe Pedal (Voice 3)
+  function schedulePedalOrgan(midi, startT, durSec, vel) {
+    const freq = midiToFreq(midi); // e.g., D2 = 73.42Hz, A1 = 55Hz
+    const stopT = Math.min(pieceEndAudio, startT + durSec + 0.08);
+    if (stopT <= startT + 0.03) return;
+
+    // 16' Principal + Sub-Bourdon + Octave Principal + Baroque Quint (1.498x)
+    const oFund = audioContext.createOscillator();
+    const oOct = audioContext.createOscillator();
+    const oQuint = audioContext.createOscillator();
+    oFund.type = "sine";
+    oOct.type = "sawtooth";
+    oQuint.type = "triangle";
+
+    oFund.frequency.setValueAtTime(freq, startT);
+    oOct.frequency.setValueAtTime(freq * 2, startT);
+    oQuint.frequency.setValueAtTime(freq * 2.9966, startT); // 12th stop for unmistakable pitch definition
+
+    const gFund = audioContext.createGain();
+    const gOct = audioContext.createGain();
+    const gQuint = audioContext.createGain();
+    gFund.gain.value = 0.20 * vel;
+    gOct.gain.value = 0.075 * vel;
+    gQuint.gain.value = 0.028 * vel;
+
+    const lp = audioContext.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(Math.min(950, freq * 8.5), startT);
+    lp.Q.value = 0.7;
+
+    const env = audioContext.createGain();
+    env.gain.setValueAtTime(0.0001, startT);
+    env.gain.linearRampToValueAtTime(1.0, startT + 0.042);
+    env.gain.setValueAtTime(0.92, Math.max(startT + 0.05, stopT - 0.09));
+    env.gain.linearRampToValueAtTime(0.0001, stopT);
+
+    oFund.connect(gFund);
+    oOct.connect(gOct);
+    oQuint.connect(gQuint);
+    gOct.connect(lp);
+    gQuint.connect(lp);
+
+    gFund.connect(env);
+    lp.connect(env);
+    env.connect(dryBus);
+    env.connect(reverbHighpass);
+
+    oFund.start(startT);
+    oOct.start(startT);
+    oQuint.start(startT);
+    oFund.stop(stopT + 0.02);
+    oOct.stop(stopT + 0.02);
+    oQuint.stop(stopT + 0.02);
+  }
+
+  // Schedule Modal Kettle Timpani
+  function scheduleTimpani(midi, startT, vel) {
+    const freq = midiToFreq(midi);
+    const stopT = Math.min(pieceEndAudio, startT + 0.95);
+    if (stopT <= startT + 0.03) return;
+
+    // Drumhead modal partials (1.0, 1.504, 1.984) with initial membrane tension pitch drop
+    const ratios = [1.0, 1.504, 1.984];
+    const gains = [0.22, 0.065, 0.028];
+    const decays = [0.78, 0.34, 0.18];
+
+    for (let m = 0; m < 3; m++) {
+      const osc = audioContext.createOscillator();
+      const g = audioContext.createGain();
+      osc.type = "sine";
+      const fTarget = freq * ratios[m];
+      osc.frequency.setValueAtTime(fTarget * 1.075, startT);
+      osc.frequency.exponentialRampToValueAtTime(fTarget, startT + 0.055);
+
+      const durM = Math.min(stopT - startT, decays[m]);
+      g.gain.setValueAtTime(0.0001, startT);
+      g.gain.linearRampToValueAtTime(gains[m] * vel, startT + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, startT + Math.max(0.04, durM));
+
+      osc.connect(g);
+      g.connect(dryBus);
+      if (m > 0) g.connect(reverbHighpass);
+      osc.start(startT);
+      osc.stop(startT + durM + 0.02);
+    }
+
+    // Felt mallet skin impact
+    const mallet = audioContext.createBufferSource();
+    mallet.buffer = noiseBuf;
+    const bp = audioContext.createBiquadFilter();
+    bp.type = "lowpass";
+    bp.frequency.setValueAtTime(420 + 280 * vel, startT);
+    const mg = audioContext.createGain();
+    mg.gain.setValueAtTime(0.09 * vel, startT);
+    mg.gain.exponentialRampToValueAtTime(0.0001, startT + 0.035);
+
+    mallet.connect(bp);
+    bp.connect(mg);
+    mg.connect(dryBus);
+    mallet.start(startT, 0.2, 0.05);
+  }
+
+  // Schedule Warm Brass / Pipe Principal Chorus (Cadential Suspension & D Major Picardy Chord)
+  function scheduleBrassChord(midis, startT, durSec, vel, brightMajor) {
+    const stopT = Math.min(pieceEndAudio, startT + durSec);
+    if (stopT <= startT + 0.05) return;
+
+    midis.forEach((midi, idx) => {
+      const freq = midiToFreq(midi);
+      const panVal = ((idx / Math.max(1, midis.length - 1)) * 2 - 1) * 0.58;
+
+      const o1 = audioContext.createOscillator();
+      const o2 = audioContext.createOscillator();
+      o1.type = "sawtooth";
+      o2.type = brightMajor ? "sawtooth" : "triangle";
+      o1.frequency.setValueAtTime(freq * 0.9985, startT);
+      o2.frequency.setValueAtTime(freq * 1.0022, startT);
+
+      const lp = audioContext.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.Q.value = 1.1;
+      const targetCut = brightMajor ? Math.min(4400, freq * 6.5) : Math.min(2400, freq * 4.5);
+      lp.frequency.setValueAtTime(freq * 1.5, startT);
+      lp.frequency.exponentialRampToValueAtTime(targetCut, startT + Math.min(0.22, durSec * 0.3));
+      lp.frequency.exponentialRampToValueAtTime(Math.max(240, targetCut * 0.55), stopT);
+
+      const env = audioContext.createGain();
+      const voiceGain = (brightMajor ? 0.044 : 0.032) * vel;
+      env.gain.setValueAtTime(0.0001, startT);
+      env.gain.linearRampToValueAtTime(voiceGain, startT + (brightMajor ? 0.055 : 0.075));
+      env.gain.setValueAtTime(voiceGain * 0.85, Math.max(startT + 0.09, stopT - (brightMajor ? 0.45 : 0.08)));
+      env.gain.exponentialRampToValueAtTime(0.0001, stopT);
+
+      const panner = audioContext.createStereoPanner();
+      panner.pan.setValueAtTime(panVal, startT);
+
+      o1.connect(lp);
+      o2.connect(lp);
+      lp.connect(env);
+      env.connect(panner);
+      panner.connect(dryBus);
+      panner.connect(reverbHighpass);
+
+      o1.start(startT);
+      o2.start(startT);
+      o1.stop(stopT + 0.02);
+      o2.stop(stopT + 0.02);
+    });
+  }
+
+  // Schedule Horological Escapement Ticks (delicate precision clockwork in Acts I-II)
+  function scheduleEscapementTick(startT, accent, panVal) {
+    if (startT >= pieceEndAudio - 0.05) return;
+    const src = audioContext.createBufferSource();
+    src.buffer = noiseBuf;
+
+    const hp = audioContext.createBiquadFilter();
+    hp.type = "bandpass";
+    hp.frequency.setValueAtTime(accent ? 4400 : 6200, startT);
+    hp.Q.value = 5.5;
+
+    const g = audioContext.createGain();
+    const amp = accent ? 0.026 : 0.013;
+    g.gain.setValueAtTime(amp, startT);
+    g.gain.exponentialRampToValueAtTime(0.0001, startT + 0.012);
+
+    const pan = audioContext.createStereoPanner();
+    pan.pan.setValueAtTime(panVal, startT);
+
+    src.connect(hp);
+    hp.connect(g);
+    g.connect(pan);
+    pan.connect(dryBus);
+
+    src.start(startT, 0.45, 0.02);
+  }
+
+  // Trigger full score onto Web Audio timeline
+  for (const n of allNotes) {
+    const startT = t0 + n.startSec;
+    if (startT >= pieceEndAudio - 0.04) continue;
+    if (n.voice === 0) {
+      const isCoda = n.step >= 128;
+      const sparkle = isCoda ? 1.0 : (n.vel > 0.90 ? 0.55 : 0.25);
+      schedulePluck(n.midi, startT, n.durSec, n.vel, 0, 0.27, sparkle);
+    } else if (n.voice === 1) {
+      const isPizz = n.step < 16;
+      schedulePluck(n.midi, startT, n.durSec, n.vel, isPizz ? 2 : 1, isPizz ? -0.10 : -0.31, n.step >= 128 ? 0.65 : 0);
+    } else if (n.voice === 2) {
+      scheduleBowedViol(n.midi, startT, n.durSec, n.vel, 0.12);
+    } else if (n.voice === 3) {
+      if (n.vel < 0.55) {
+        schedulePluck(n.midi, startT, n.durSec, n.vel * 1.45, 2, -0.14, 0);
+      } else {
+        schedulePedalOrgan(n.midi, startT, n.durSec, n.vel);
+      }
+    }
+  }
+
+  for (const tp of timpaniEvents) {
+    scheduleTimpani(tp.midi, t0 + tp.startSec, tp.vel);
+  }
+
+  // Grand Cadential Brass Chorus: Asus4 (Step 120) -> A7 (Step 124) -> Sunlit D Major Picardy (Step 128)
+  scheduleBrassChord([52, 57, 62, 67, 69], t0 + stepToSec(120), stepToSec(124) - stepToSec(120) + 0.04, 0.85, false);
+  scheduleBrassChord([52, 57, 61, 67, 69], t0 + stepToSec(124), stepToSec(128) - stepToSec(124) + 0.04, 0.92, false);
+  const codaDur = Math.max(0.4, (duration - LEAD_IN - 0.06) - PICARDY_SEC);
+  scheduleBrassChord([38, 45, 50, 57, 62, 66, 69, 74], t0 + PICARDY_SEC, codaDur, 1.0, true);
+  // Final radiant high F#6 crystalline harmonic shimmer in Coda
+  schedulePluck(90, t0 + stepToSec(132.5), 0.75 * timeScale, 0.58, 0, 0.0, 1.15);
+
+  // Subtle clockwork escapement ticks in Bars 1-4 (gradually yielding to full orchestra)
+  for (let s = 0; s < 64; s++) {
+    const fade = s < 32 ? 1.0 : 1.0 - ((s - 32) / 32) * 0.65;
+    if (s % 2 === 0 || s < 32) {
+      const tickT = t0 + stepToSec(s);
+      scheduleEscapementTick(tickT, (s % 4 === 0) && fade > 0.6, (s % 2 === 0 ? -0.22 : 0.22));
+    }
+  }
+
+  // ============================================================================
+  // 4. HYBRID WEBGL VOLUMETRIC CATHEDRAL SHADER + 2D PRECISION ARCHITECTURE
+  // ============================================================================
+  function createOffscreen(w, h) {
+    if (typeof OffscreenCanvas !== "undefined") return new OffscreenCanvas(w, h);
+    if (typeof document !== "undefined") {
+      const c = document.createElement("canvas");
+      c.width = w;
+      c.height = h;
+      return c;
+    }
+    return null;
+  }
+
+  const BG_W = Math.round(W * 0.5);
+  const BG_H = Math.round(H * 0.5);
+  const bgSurface = createOffscreen(BG_W, BG_H);
+  let gl = null;
+  let glProg = null;
+  let glUniforms = null;
+
+  if (bgSurface) {
+    const glOpts = { alpha: false, depth: false, stencil: false, antialias: false, preserveDrawingBuffer: true };
+    gl = bgSurface.getContext("webgl2", glOpts) || bgSurface.getContext("webgl", glOpts);
+    if (gl) {
+      const vsSrc = `
+        attribute vec2 aPos;
+        varying vec2 vUv;
+        void main() {
+          vUv = vec2(aPos.x * 0.5 + 0.5, 0.5 - aPos.y * 0.5);
+          gl_Position = vec4(aPos, 0.0, 1.0);
+        }
+      `;
+      const fsSrc = `
+        precision highp float;
+        varying vec2 vUv;
+        uniform float uTime;
+        uniform float uStep;
+        uniform float uPicardy;
+        uniform float uTension;
+        uniform float uEnergy;
+        uniform vec2 uRes;
+
+        void main() {
+          vec2 uv = vUv;
+          float aspect = uRes.x / uRes.y;
+
+          // Center aligned with Astrarium at (0.5, 0.4037)
+          vec2 c = vec2(uv.x - 0.5, (uv.y - 0.4037) / aspect);
+          float r = length(c);
+          float ang = atan(c.y, c.x);
+
+          // Rose-window 12 & 24-fold volumetric cathedral shafts
+          float rot = uStep * 0.018;
+          float rays12 = 0.5 + 0.5 * cos(ang * 12.0 - rot);
+          float rays24 = 0.5 + 0.5 * cos(ang * 24.0 + rot * 1.5);
+          float shaft = pow(rays12, 3.0) * 0.65 + pow(rays24, 5.0) * 0.35;
+          float radialFalloff = exp(-r * 2.15) * (0.45 + 0.55 * smoothstep(0.02, 0.26, r));
+
+          // Iterative optical caustics
+          vec2 p = c * 4.2;
+          float caus = 0.0;
+          float t = uTime * 0.42;
+          for (int i = 0; i < 3; i++) {
+            float fi = float(i) + 1.0;
+            p += vec2(
+              sin(p.y * 1.7 + t * fi * 0.8) * 0.42,
+              cos(p.x * 1.9 - t * fi * 0.7) * 0.42
+            );
+            caus += abs(sin(p.x + cos(p.y + t))) / fi;
+          }
+          caus = pow(max(0.0, 1.0 - caus * 0.46), 2.4);
+
+          // Gothic Lancet Cathedral Niche Relief
+          float archX = abs(uv.x - 0.5) * 2.0;
+          float archCurve = archX * archX * 0.24 + max(0.0, 0.14 - uv.y) * 2.2;
+          float nicheMask = 1.0 - smoothstep(0.72, 1.08, archX + archCurve * 0.45);
+
+          // Nocturnal D Minor vs Tension vs Sunlit D Major Picardy Palette
+          vec3 abyssMin = vec3(0.022, 0.034, 0.072);
+          vec3 midMin   = vec3(0.055, 0.105, 0.195);
+          vec3 rayMin   = vec3(0.32, 0.56, 0.88);
+          vec3 warmBr   = vec3(0.88, 0.62, 0.28);
+
+          vec3 tensCol  = vec3(0.68, 0.22, 0.36);
+          vec3 goldAb   = vec3(0.085, 0.058, 0.028);
+          vec3 goldMid  = vec3(0.32, 0.20, 0.07);
+          vec3 goldRay  = vec3(1.00, 0.82, 0.42);
+
+          vec3 baseCol = mix(abyssMin, goldAb, uPicardy * 0.85);
+          vec3 vaultCol = mix(midMin, goldMid, uPicardy);
+          vec3 shaftCol = mix(mix(rayMin, tensCol, uTension * 0.52), goldRay, uPicardy);
+
+          vec3 col = mix(baseCol, vaultCol, nicheMask * exp(-r * 1.35));
+          col += shaftCol * shaft * radialFalloff * (0.28 + 0.42 * uEnergy + 0.55 * uPicardy);
+          col += mix(warmBr, goldRay, uPicardy) * caus * nicheMask * (0.09 + 0.14 * uEnergy + 0.18 * uPicardy);
+
+          // Lower Mercury Basin ambient glow around y = 0.863
+          vec2 bc = vec2((uv.x - 0.5) * 1.15, (uv.y - 0.863) * 4.8);
+          float bDist = length(bc);
+          float basinGlow = exp(-bDist * bDist * 1.8);
+          col += mix(vec3(0.12, 0.25, 0.42), vec3(0.65, 0.45, 0.16), uPicardy) * basinGlow * (0.35 + 0.35 * uEnergy);
+
+          // Subtle stone border & filmic tone map
+          float vig = smoothstep(1.22, 0.28, length(vec2((uv.x - 0.5) * 1.55, (uv.y - 0.48) * 1.35)));
+          col *= 0.52 + 0.48 * vig;
+          col = col / (1.0 + col * 0.42);
+
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `;
+
+      const compile = (type, src) => {
+        const sh = gl.createShader(type);
+        gl.shaderSource(sh, src);
+        gl.compileShader(sh);
+        if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+          gl.deleteShader(sh);
+          return null;
+        }
+        return sh;
+      };
+      const vs = compile(gl.VERTEX_SHADER, vsSrc);
+      const fs = compile(gl.FRAGMENT_SHADER, fsSrc);
+      if (vs && fs) {
+        const prog = gl.createProgram();
+        gl.attachShader(prog, vs);
+        gl.attachShader(prog, fs);
+        gl.linkProgram(prog);
+        if (gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+          glProg = prog;
+          gl.useProgram(prog);
+          const vbo = gl.createBuffer();
+          gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+          gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+          const loc = gl.getAttribLocation(prog, "aPos");
+          gl.enableVertexAttribArray(loc);
+          gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+          glUniforms = {
+            uTime: gl.getUniformLocation(prog, "uTime"),
+            uStep: gl.getUniformLocation(prog, "uStep"),
+            uPicardy: gl.getUniformLocation(prog, "uPicardy"),
+            uTension: gl.getUniformLocation(prog, "uTension"),
+            uEnergy: gl.getUniformLocation(prog, "uEnergy"),
+            uRes: gl.getUniformLocation(prog, "uRes")
+          };
+        }
+      }
+    }
+  }
+
+  // ============================================================================
+  // 5. KINETIC ASTRARIUM STATE: STRINGS, RINGS, PRISM, RIPPLES, MOTES
+  // ============================================================================
+  const CX = W * 0.5;
+  const CY = H * 0.4037;      // 545 on 1350px
+  const CROWN_Y = H * 0.118;  // 159 on 1350px
+  const BASIN_Y = H * 0.863;  // 1165 on 1350px
+  const BASIN_RX = W * 0.365; // 394px
+  const BASIN_RY = H * 0.062; // 84px
+  const FOV = 920;
+
+  function project3D(x, y, z, cx = CX, cy = CY) {
+    const s = FOV / Math.max(120, FOV + z);
+    return { x: cx + x * s, y: cy + y * s, s, z };
+  }
+
+  function rotate3D(x, y, z, rx, ry, rz) {
+    const cx = Math.cos(rx), sx = Math.sin(rx);
+    let y1 = y * cx - z * sx;
+    let z1 = y * sx + z * cx;
+    const cy = Math.cos(ry), sy = Math.sin(ry);
+    let x2 = x * cy + z1 * sy;
+    let z2 = -x * sy + z1 * cy;
+    const cz = Math.cos(rz), sz = Math.sin(rz);
+    return {
+      x: x2 * cz - y1 * sz,
+      y: x2 * sz + y1 * cz,
+      z: z2
+    };
+  }
+
+  // 24 Parabolic Cathedral Harp Strings mapped across the score's pitches
+  const NUM_STRINGS = 24;
+  const strings = [];
+  for (let i = 0; i < NUM_STRINGS; i++) {
+    const u = (i / (NUM_STRINGS - 1)) * 2 - 1; // [-1, 1]
+    const topX = CX + u * (W * 0.34);
+    const topY = CROWN_Y + Math.pow(Math.abs(u), 1.65) * (H * 0.052);
+    const midBowX = CX + u * (W * 0.405);
+    const thetaBasin = Math.PI * (0.12 + 0.76 * ((i / (NUM_STRINGS - 1))));
+    const botX = CX - Math.cos(thetaBasin) * (BASIN_RX * 0.86);
+    const botY = BASIN_Y + Math.sin(thetaBasin) * (BASIN_RY * 0.38) - BASIN_RY * 0.18;
+
+    strings.push({
+      idx: i,
+      u,
+      topX,
+      topY,
+      midBowX,
+      botX,
+      botY,
+      amp: 0,
+      phase: random() * Math.PI * 2,
+      voice: 0,
+      vel: 0,
+      pulses: [] // Traveling light beads shooting from Astrarium -> Basin & Crown
+    });
+  }
+
+  function midiToStringIndex(midi) {
+    // Smoothly map MIDI [33..90] onto [0..23]
+    const norm = Math.max(0, Math.min(1, (midi - 36) / 50));
+    return Math.min(NUM_STRINGS - 1, Math.max(0, Math.round(norm * (NUM_STRINGS - 1))));
+  }
+
+  // Liquid Mercury Basin Ripples & Solar Shockwaves
+  const ripples = [];
+  const shockwaves = [];
+
+  function spawnRipple(x, y, strength, voice, isGold) {
+    if (ripples.length > 48) ripples.shift();
+    ripples.push({ x, y, r: 4, maxR: 90 + 145 * strength, alpha: 0.85 * strength, voice, isGold });
+  }
+
+  function spawnShockwave(strength, isPicardy) {
+    if (shockwaves.length > 12) shockwaves.shift();
+    shockwaves.push({ r: 36, maxR: isPicardy ? W * 0.95 : W * 0.48, alpha: strength, isPicardy });
+  }
+
+  // Kepler's Stella Octangula (Two dual intersecting regular tetrahedra)
+  const tetA = [
+    [1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]
+  ];
+  const tetB = [
+    [-1, -1, -1], [-1, 1, 1], [1, -1, 1], [1, 1, -1]
+  ];
+  const tetFaces = [
+    [0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 3, 2]
+  ];
+
+  // Atmospheric Gold-Leaf & Prismatic Dust Motes (deterministic via random())
+  const NUM_MOTES = 95;
+  const motes = [];
+  for (let i = 0; i < NUM_MOTES; i++) {
+    motes.push({
+      x: random() * W,
+      y: random() * H,
+      r: 0.9 + random() * 2.4,
+      vx: (random() - 0.5) * 14,
+      vy: -(10 + random() * 26),
+      phase: random() * Math.PI * 2,
+      hueType: i % 3
+    });
+  }
+
+  // Gimbaled Ring State for the 4 Contrapuntal Voices
+  const rings = [
+    { radius: W * 0.156, rx: 0.42, ry: -0.25, rz: 0, spinZ: 0, teeth: 48, width: 2.2, voice: 0 },
+    { radius: W * 0.208, rx: -0.36, ry: 0.32, rz: 0, spinZ: 0, teeth: 60, width: 2.5, voice: 1 },
+    { radius: W * 0.260, rx: 0.28, ry: 0.40, rz: 0, spinZ: 0, teeth: 0,  width: 3.1, voice: 2 },
+    { radius: W * 0.314, rx: -0.18, ry: -0.22, rz: 0, spinZ: 0, teeth: 72, width: 3.8, voice: 3 }
+  ];
+
+  // Voice Palette Helper (Shifts seamlessly into radiant gold on Picardy chord)
+  function voiceRGBA(voice, alpha, picardy) {
+    const colors = [
+      [135, 228, 255], // Voice 0 Soprano: Ice-Diamond Cyan
+      [255, 198, 145], // Voice 1 Alto: Sterling Rose-Amber
+      [255, 134, 78],  // Voice 2 Bowed Viol: Burnished Copper-Coral
+      [255, 192, 72]   // Voice 3 Pedal: Imperial Bronze-Gold
+    ];
+    const gold = [255, 226, 142];
+    const base = colors[voice] || colors[0];
+    const r = Math.round(base[0] + (gold[0] - base[0]) * picardy * 0.78);
+    const g = Math.round(base[1] + (gold[1] - base[1]) * picardy * 0.78);
+    const b = Math.round(base[2] + (gold[2] - base[2]) * picardy * 0.78);
+    return `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
+  }
+
+  function stringPoint(s, tNorm, vibOffset) {
+    const inv = 1 - tNorm;
+    const x = inv * inv * s.topX + 2 * inv * tNorm * s.midBowX + tNorm * tNorm * s.botX;
+    const y = inv * inv * s.topY + 2 * inv * tNorm * CY + tNorm * tNorm * s.botY;
+    return { x: x + vibOffset, y };
+  }
+
+  // Track note & timpani triggers cleanly across frames
+  let nextNoteCursor = 0;
+  let nextTimpCursor = 0;
+  let picardyTriggered = false;
+  let prevElapsed = 0;
+  let smoothEnergy = 0;
+  let prismFlash = 0;
+
+  // ============================================================================
+  // 6. MAIN RENDER LOOP (60fps Locked to audioContext.currentTime)
+  // ============================================================================
+  function renderFrame() {
+    const rawElapsed = audioContext.currentTime - t0;
+    const elapsed = Math.max(0, Math.min(duration, rawElapsed));
+    const dt = Math.max(0.001, Math.min(0.05, elapsed - prevElapsed || 0.016));
+    prevElapsed = elapsed;
+
+    const curStep = secToStep(elapsed);
+
+    // Real-time audio RMS + Spectral readout
+    analyser.getByteFrequencyData(freqData);
+    analyser.getByteTimeDomainData(timeData);
+    let sumSq = 0;
+    for (let i = 0; i < timeData.length; i++) {
+      const d = (timeData[i] - 128) / 128;
+      sumSq += d * d;
+    }
+    const rms = Math.sqrt(sumSq / timeData.length);
+    smoothEnergy += (Math.min(1, rms * 3.4) - smoothEnergy) * Math.min(1, dt * 12);
+
+    // Harmonic Mood Curves: Tension (Stretto/Diminished/Pedal) & Picardy Sunburst
+    let tension = 0;
+    if (curStep >= 56 && curStep < 128) {
+      tension = Math.min(1, (curStep - 56) / 30);
+      if (curStep >= 84 && curStep < 88) tension = 1.0; // G#dim7 peak!
+    }
+    let picardy = 0;
+    if (elapsed >= PICARDY_SEC) {
+      picardy = Math.min(1, 1 - Math.exp(-(elapsed - PICARDY_SEC) * 5.2));
+      if (!picardyTriggered) {
+        picardyTriggered = true;
+        prismFlash = 1.0;
+        spawnShockwave(0.95, true);
+        spawnShockwave(0.65, true);
+      }
+    }
+    prismFlash *= Math.exp(-dt * 3.2);
+
+    // Process newly started notes since previous frame
+    while (nextNoteCursor < allNotes.length && allNotes[nextNoteCursor].startSec <= elapsed) {
+      const ev = allNotes[nextNoteCursor++];
+      const sIdx = midiToStringIndex(ev.midi);
+      const st = strings[sIdx];
+      st.amp = Math.min(20, st.amp * 0.35 + (6.5 + 11.5 * ev.vel));
+      st.voice = ev.voice;
+      st.vel = ev.vel;
+      if (st.pulses.length < 5) {
+        st.pulses.push({
+          u: 0.44, // Starts at Astrarium intersection and shoots to Mercury Basin & Crown!
+          dir: 1,
+          vel: ev.vel,
+          voice: ev.voice,
+          isGold: ev.step >= 128
+        });
+      }
+      // Angular escapement impulse on corresponding voice ring
+      rings[ev.voice].spinZ += (ev.voice % 2 === 0 ? 1 : -1) * (0.042 + 0.035 * ev.vel);
+      prismFlash = Math.min(1.0, prismFlash + 0.14 * ev.vel);
+    }
+
+    while (nextTimpCursor < timpaniEvents.length && timpaniEvents[nextTimpCursor].startSec <= elapsed) {
+      const tp = timpaniEvents[nextTimpCursor++];
+      spawnShockwave(0.55 * tp.vel, tp.step >= 128);
+      spawnRipple(CX, BASIN_Y, tp.vel, 3, tp.step >= 128);
+    }
+
+    // Collect currently sounding notes for Sacred-Geometry Pitch-Class Chords & Ring Arcs
+    const activeByVoice = [[], [], [], []];
+    const activePitchClasses = new Float32Array(12);
+    for (let i = 0; i < allNotes.length; i++) {
+      const n = allNotes[i];
+      if (n.startSec > elapsed) break;
+      const tail = n.step >= 128 ? 0.65 : 0.06;
+      if (n.endSec + tail >= elapsed) {
+        const life = 1 - Math.max(0, Math.min(1, (elapsed - n.startSec) / (n.durSec + tail)));
+        activeByVoice[n.voice].push({ midi: n.midi, vel: n.vel, life });
+        // Pitch class with D = 0 (at 12 o'clock!)
+        const pc = ((n.midi - 2) % 12 + 12) % 12;
+        activePitchClasses[pc] = Math.max(activePitchClasses[pc], life * n.vel);
+      }
+    }
+
+    // --------------------------------------------------------------------------
+    // LAYER 0: Render Volumetric Cathedral Backdrop (WebGL or 2D Fallback)
+    // --------------------------------------------------------------------------
+    if (gl && glProg) {
+      gl.viewport(0, 0, BG_W, BG_H);
+      gl.useProgram(glProg);
+      gl.uniform1f(glUniforms.uTime, elapsed);
+      gl.uniform1f(glUniforms.uStep, curStep);
+      gl.uniform1f(glUniforms.uPicardy, picardy);
+      gl.uniform1f(glUniforms.uTension, tension);
+      gl.uniform1f(glUniforms.uEnergy, smoothEnergy);
+      gl.uniform2f(glUniforms.uRes, BG_W, BG_H);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      ctx.drawImage(bgSurface, 0, 0, W, H);
+    } else {
+      const bgGrad = ctx.createRadialGradient(CX, CY, 30, CX, CY, H * 0.78);
+      bgGrad.addColorStop(0, picardy > 0.5 ? "#523514" : "#122442");
+      bgGrad.addColorStop(0.55, picardy > 0.5 ? "#211508" : "#081020");
+      bgGrad.addColorStop(1, "#04060d");
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    // --------------------------------------------------------------------------
+    // LAYER 1: Architectural Filigree, Lancet Border & Upper Harmonic Crown Arch
+    // --------------------------------------------------------------------------
+    ctx.save();
+    const frameAlpha = 0.22 + 0.22 * picardy;
+    ctx.strokeStyle = `rgba(235, 192, 118, ${frameAlpha.toFixed(3)})`;
+    ctx.lineWidth = 1.4;
+
+    // Outer Architectural Double Drafting Frame + Gothic Pointed Arch
+    const pad = 38;
+    ctx.beginPath();
+    ctx.moveTo(pad, H - pad);
+    ctx.lineTo(pad, H * 0.26);
+    ctx.quadraticCurveTo(pad, pad + 20, CX, pad - 6);
+    ctx.quadraticCurveTo(W - pad, pad + 20, W - pad, H * 0.26);
+    ctx.lineTo(W - pad, H - pad);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Crown Bridge Arch where the 24 Strings anchor
+    ctx.lineWidth = 2.4;
+    ctx.strokeStyle = `rgba(242, 202, 128, ${(0.42 + 0.35 * picardy).toFixed(3)})`;
+    ctx.beginPath();
+    for (let i = 0; i < NUM_STRINGS; i++) {
+      const s = strings[i];
+      if (i === 0) ctx.moveTo(s.topX - 16, s.topY + 8);
+      ctx.lineTo(s.topX, s.topY);
+      if (i === NUM_STRINGS - 1) ctx.lineTo(s.topX + 16, s.topY + 8);
+    }
+    ctx.stroke();
+
+    // Crown Tuning Peg Jewels
+    for (let i = 0; i < NUM_STRINGS; i++) {
+      const s = strings[i];
+      const glow = Math.min(1, s.amp / 12);
+      ctx.fillStyle = glow > 0.08
+        ? voiceRGBA(s.voice, 0.55 + 0.45 * glow, picardy)
+        : `rgba(225, 185, 115, 0.45)`;
+      ctx.beginPath();
+      ctx.arc(s.topX, s.topY, 2.6 + 2.2 * glow, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // --------------------------------------------------------------------------
+    // Precompute 3D Gimbaled Armillary Rings (Split Back z > 0 vs Front z <= 0)
+    // --------------------------------------------------------------------------
+    const ringPolys = [];
+    for (let rIdx = 0; rIdx < 4; rIdx++) {
+      const rg = rings[rIdx];
+      const tiltSpeed = 0.16 + rIdx * 0.055;
+      const rx = rg.rx + Math.sin(elapsed * tiltSpeed + rIdx) * (0.22 + 0.14 * tension) * (1 - 0.55 * picardy);
+      const ry = rg.ry + Math.cos(elapsed * (tiltSpeed * 0.85) + rIdx * 1.7) * (0.24 + 0.12 * tension) * (1 - 0.55 * picardy);
+      const rz = rg.spinZ + curStep * (rIdx % 2 === 0 ? 0.028 : -0.022);
+
+      const SEGS = 84;
+      const pts = [];
+      for (let i = 0; i <= SEGS; i++) {
+        const th = (i / SEGS) * Math.PI * 2;
+        const p3 = rotate3D(Math.cos(th) * rg.radius, Math.sin(th) * rg.radius, 0, rx, ry, rz);
+        const pr = project3D(p3.x, p3.y, p3.z);
+        pts.push({ x: pr.x, y: pr.y, z: p3.z, s: pr.s, th });
+      }
+      ringPolys.push({ rg, pts, rx, ry, rz });
+    }
+
+    function drawRingPass(frontPass) {
+      ctx.save();
+      for (let rIdx = 3; rIdx >= 0; rIdx--) {
+        const { rg, pts, rx, ry, rz } = ringPolys[rIdx];
+        const vNotes = activeByVoice[rg.voice];
+        const vGlow = vNotes.length > 0 ? Math.min(1, vNotes.reduce((a, b) => a + b.life * b.vel, 0)) : 0;
+
+        const baseAlpha = frontPass ? (0.58 + 0.34 * vGlow) : (0.22 + 0.18 * vGlow);
+        ctx.strokeStyle = voiceRGBA(rg.voice, baseAlpha, picardy);
+        ctx.lineWidth = rg.width * (frontPass ? 1.05 : 0.78);
+
+        ctx.beginPath();
+        let drawing = false;
+        for (let i = 0; i < pts.length; i++) {
+          const p = pts[i];
+          const vis = frontPass ? (p.z <= 0) : (p.z >= -4);
+          if (vis) {
+            if (!drawing) {
+              ctx.moveTo(p.x, p.y);
+              drawing = true;
+            } else {
+              ctx.lineTo(p.x, p.y);
+            }
+          } else {
+            drawing = false;
+          }
+        }
+        ctx.stroke();
+
+        // Precision Escapement Gear Teeth
+        if (rg.teeth > 0) {
+          const toothLen = frontPass ? 7.5 : 5.0;
+          ctx.strokeStyle = voiceRGBA(rg.voice, frontPass ? (0.42 + 0.35 * vGlow) : 0.15, picardy);
+          ctx.lineWidth = frontPass ? 1.25 : 0.9;
+          ctx.beginPath();
+          for (let t = 0; t < rg.teeth; t++) {
+            const th = (t / rg.teeth) * Math.PI * 2;
+            const pIn3 = rotate3D(Math.cos(th) * rg.radius, Math.sin(th) * rg.radius, 0, rx, ry, rz);
+            if (frontPass ? (pIn3.z > 0) : (pIn3.z <= 0)) continue;
+            const pOut3 = rotate3D(Math.cos(th) * (rg.radius + toothLen), Math.sin(th) * (rg.radius + toothLen), 0, rx, ry, rz);
+            const p0 = project3D(pIn3.x, pIn3.y, pIn3.z);
+            const p1 = project3D(pOut3.x, pOut3.y, pOut3.z);
+            ctx.moveTo(p0.x, p0.y);
+            ctx.lineTo(p1.x, p1.y);
+          }
+          ctx.stroke();
+        }
+
+        // Luminous Active Note Arcs along each Voice's Gimbal Ring
+        if (vGlow > 0.03) {
+          ctx.save();
+          ctx.globalCompositeOperation = "lighter";
+          for (const vn of vNotes) {
+            const pcAngle = (((vn.midi - 2) % 12 + 12) % 12) * (Math.PI / 6) - Math.PI * 0.5;
+            const span = 0.24 + 0.16 * vn.life;
+            ctx.strokeStyle = voiceRGBA(rg.voice, (frontPass ? 0.72 : 0.28) * vn.life, picardy);
+            ctx.lineWidth = rg.width * (frontPass ? 2.4 : 1.5);
+            ctx.beginPath();
+            let started = false;
+            for (let k = -6; k <= 6; k++) {
+              const a = pcAngle + (k / 6) * span;
+              const p3 = rotate3D(Math.cos(a) * rg.radius, Math.sin(a) * rg.radius, 0, rx, ry, rz - curStep * (rIdx % 2 === 0 ? 0.028 : -0.022));
+              if (frontPass ? (p3.z > 2) : (p3.z <= -2)) {
+                started = false;
+                continue;
+              }
+              const pr = project3D(p3.x, p3.y, p3.z);
+              if (!started) {
+                ctx.moveTo(pr.x, pr.y);
+                started = true;
+              } else {
+                ctx.lineTo(pr.x, pr.y);
+              }
+            }
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
+      ctx.restore();
+    }
+
+    // Draw BACK hemisphere of the 4 Gimbaled Rings first
+    drawRingPass(false);
+
+    // --------------------------------------------------------------------------
+    // LAYER 2: Three Coupled Harmonic Pendulums (Locked to Step Grid & Ritardando!)
+    // --------------------------------------------------------------------------
+    ctx.save();
+    const pendLengths = [H * 0.245, H * 0.335, H * 0.425];
+    const pendPeriods = [2, 4, 8]; // 8th, quarter, half-note harmonic ratios
+    const pendSwings  = [0.24, 0.19, 0.145];
+    const calmDamp = 1 - 0.58 * picardy;
+
+    for (let p = 2; p >= 0; p--) {
+      const len = pendLengths[p];
+      const maxAng = pendSwings[p] * calmDamp;
+      const ang = Math.sin((Math.PI * curStep) / pendPeriods[p]) * maxAng;
+      const prevAng = Math.sin((Math.PI * Math.max(0, curStep - 0.55)) / pendPeriods[p]) * maxAng;
+
+      const bx = CX + Math.sin(ang) * len;
+      const by = CY + Math.cos(ang) * len;
+
+      // Subtle golden swing arc guide
+      ctx.strokeStyle = `rgba(225, 185, 115, ${(0.09 + 0.08 * picardy).toFixed(3)})`;
+      ctx.lineWidth = 1.0;
+      ctx.beginPath();
+      ctx.arc(CX, CY, len, Math.PI * 0.5 - pendSwings[p], Math.PI * 0.5 + pendSwings[p]);
+      ctx.stroke();
+
+      // Motion-trail arc
+      ctx.strokeStyle = voiceRGBA(p, 0.38, picardy);
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.arc(CX, CY, len, Math.PI * 0.5 - Math.max(ang, prevAng), Math.PI * 0.5 - Math.min(ang, prevAng));
+      ctx.stroke();
+
+      // Fine brass rod
+      ctx.strokeStyle = `rgba(242, 206, 138, ${(0.34 + 0.22 * picardy).toFixed(3)})`;
+      ctx.lineWidth = 1.35;
+      ctx.beginPath();
+      ctx.moveTo(CX, CY);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+
+      // Faceted Crystal/Gold Plumb-Bob
+      const bobR = 6.5 + p * 2.2;
+      ctx.fillStyle = voiceRGBA(p, 0.88, picardy);
+      ctx.beginPath();
+      ctx.moveTo(bx, by - bobR * 1.45);
+      ctx.lineTo(bx + bobR, by);
+      ctx.lineTo(bx, by + bobR * 1.45);
+      ctx.lineTo(bx - bobR, by);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // --------------------------------------------------------------------------
+    // LAYER 3: 24 Parabolic Harmonic Strings + Standing Waves + Light Impulses
+    // --------------------------------------------------------------------------
+    ctx.save();
+    for (let i = 0; i < NUM_STRINGS; i++) {
+      const s = strings[i];
+      s.amp *= Math.exp(-dt * 4.8);
+      s.phase += dt * (42 + i * 2.6);
+
+      const glow = Math.min(1, s.amp / 13);
+      ctx.strokeStyle = glow > 0.04
+        ? voiceRGBA(s.voice, 0.28 + 0.65 * glow, picardy)
+        : `rgba(220, 185, 125, ${(0.12 + 0.14 * picardy).toFixed(3)})`;
+      ctx.lineWidth = 0.85 + 1.95 * glow;
+
+      const SEGS = 24;
+      ctx.beginPath();
+      for (let k = 0; k <= SEGS; k++) {
+        const u = k / SEGS;
+        let vib = 0;
+        if (s.amp > 0.08) {
+          // 3-mode transverse Fourier standing wave pinned at Crown (u=0) & Basin (u=1)
+          const m1 = Math.sin(Math.PI * u) * Math.cos(s.phase);
+          const m2 = 0.42 * Math.sin(2 * Math.PI * u) * Math.cos(s.phase * 2.01);
+          const m3 = 0.18 * Math.sin(3 * Math.PI * u) * Math.cos(s.phase * 3.02);
+          vib = s.amp * (m1 + m2 + m3);
+        }
+        const pt = stringPoint(s, u, vib);
+        if (k === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      }
+      ctx.stroke();
+
+      // Additive bloom on actively vibrating strings
+      if (glow > 0.22) {
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.strokeStyle = voiceRGBA(s.voice, 0.26 * glow, picardy);
+        ctx.lineWidth = 4.8 * glow;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Update & Draw Traveling Light Impulses shooting down to the Mercury Basin
+      for (let p = s.pulses.length - 1; p >= 0; p--) {
+        const pl = s.pulses[p];
+        pl.u += dt * 2.55;
+        if (pl.u >= 1.0) {
+          spawnRipple(s.botX, s.botY, 0.45 + 0.55 * pl.vel, pl.voice, pl.isGold || picardy > 0.3);
+          s.pulses.splice(p, 1);
+          continue;
+        }
+        const pt = stringPoint(s, pl.u, 0);
+        const prevPt = stringPoint(s, Math.max(0, pl.u - 0.075), 0);
+
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        const grad = ctx.createLinearGradient(prevPt.x, prevPt.y, pt.x, pt.y);
+        grad.addColorStop(0, voiceRGBA(pl.voice, 0, picardy));
+        grad.addColorStop(1, voiceRGBA(pl.voice, 0.92, picardy));
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 3.2;
+        ctx.beginPath();
+        ctx.moveTo(prevPt.x, prevPt.y);
+        ctx.lineTo(pt.x, pt.y);
+        ctx.stroke();
+
+        ctx.fillStyle = "#fff9e8";
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 2.8 + 2.0 * pl.vel, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+
+    // --------------------------------------------------------------------------
+    // LAYER 4: Sacred-Geometry Pitch-Class Wheel & Contrapuntal Light Chords
+    // (G#dim7 forms a blazing symmetric square; D Major forms a solar equilateral triad!)
+    // --------------------------------------------------------------------------
+    const WHEEL_R = W * 0.292;
+    const pcNodes = [];
+    for (let pc = 0; pc < 12; pc++) {
+      const a = (pc / 12) * Math.PI * 2 - Math.PI * 0.5; // pc=0 (D) at 12 o'clock!
+      pcNodes.push({
+        x: CX + Math.cos(a) * WHEEL_R,
+        y: CY + Math.sin(a) * WHEEL_R,
+        act: activePitchClasses[pc]
+      });
+    }
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    // Connect all active pitch classes with refractive harmonic chord beams
+    const activeIdx = [];
+    for (let pc = 0; pc < 12; pc++) {
+      if (pcNodes[pc].act > 0.04) activeIdx.push(pc);
+    }
+    for (let i = 0; i < activeIdx.length; i++) {
+      for (let j = i + 1; j < activeIdx.length; j++) {
+        const nA = pcNodes[activeIdx[i]];
+        const nB = pcNodes[activeIdx[j]];
+        const strength = Math.min(nA.act, nB.act);
+        if (strength < 0.05) continue;
+
+        ctx.strokeStyle = picardy > 0.3
+          ? `rgba(255, 224, 132, ${(0.55 * strength).toFixed(3)})`
+          : (tension > 0.75
+            ? `rgba(255, 165, 138, ${(0.48 * strength).toFixed(3)})`
+            : `rgba(155, 222, 255, ${(0.44 * strength).toFixed(3)})`);
+        ctx.lineWidth = 1.4 + 2.6 * strength;
+        ctx.beginPath();
+        ctx.moveTo(nA.x, nA.y);
+        ctx.lineTo(nB.x, nB.y);
+        ctx.stroke();
+      }
+    }
+
+    // 12-Ray Solar Mandala Spokes on the D Major Picardy Chord
+    if (picardy > 0.02) {
+      for (let pc = 0; pc < 12; pc++) {
+        const nd = pcNodes[pc];
+        const isTriad = (pc === 0 || pc === 4 || pc === 7); // D, F#, A
+        ctx.strokeStyle = `rgba(255, 228, 145, ${((isTriad ? 0.52 : 0.18) * picardy).toFixed(3)})`;
+        ctx.lineWidth = isTriad ? 2.4 : 1.0;
+        ctx.beginPath();
+        ctx.moveTo(CX, CY);
+        ctx.lineTo(nd.x, nd.y);
+        ctx.stroke();
+      }
+    }
+
+    // Draw 12 Chromatic Pitch-Class Jewels around the Astrarium Dial
+    for (let pc = 0; pc < 12; pc++) {
+      const nd = pcNodes[pc];
+      const act = nd.act;
+      const rJewel = (pc === 0 ? 5.2 : 3.6) + 5.5 * act;
+      if (act > 0.05) {
+        const g = ctx.createRadialGradient(nd.x, nd.y, 1, nd.x, nd.y, rJewel * 3.4);
+        g.addColorStop(0, `rgba(255, 250, 230, ${(0.85 * act).toFixed(3)})`);
+        g.addColorStop(0.45, picardy > 0.3 ? `rgba(255, 205, 95, ${(0.45 * act).toFixed(3)})` : `rgba(120, 215, 255, ${(0.42 * act).toFixed(3)})`);
+        g.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(nd.x, nd.y, rJewel * 3.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = act > 0.05 ? "#fffdf5" : `rgba(235, 198, 128, ${(0.38 + 0.35 * picardy).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(nd.x, nd.y, rJewel * 0.72, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // --------------------------------------------------------------------------
+    // LAYER 5: Kepler's Central 3D Stella Octangula Crystalline Prism
+    // --------------------------------------------------------------------------
+    const prismScale = (64 + 14 * smoothEnergy + 12 * prismFlash + 10 * picardy);
+    const prx = elapsed * 0.48 + curStep * 0.015;
+    const pry = elapsed * 0.62 - curStep * 0.02;
+    const prz = curStep * 0.025;
+
+    // Core Radiant Halo behind/inside Prism
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const coreR = prismScale * (2.1 + 0.9 * picardy + 0.6 * prismFlash);
+    const coreGrad = ctx.createRadialGradient(CX, CY, 4, CX, CY, coreR);
+    coreGrad.addColorStop(0, "#ffffff");
+    coreGrad.addColorStop(0.25, picardy > 0.25
+      ? `rgba(255, 224, 132, ${(0.55 + 0.35 * picardy).toFixed(3)})`
+      : `rgba(145, 220, 255, ${(0.38 + 0.32 * smoothEnergy).toFixed(3)})`);
+    coreGrad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = coreGrad;
+    ctx.beginPath();
+    ctx.arc(CX, CY, coreR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Project & Depth-Sort all 8 Faces of Dual Tetrahedra
+    const facesToDraw = [];
+    const buildTetFaces = (verts, isDual) => {
+      const p3s = verts.map(([vx, vy, vz]) => rotate3D(vx * prismScale, vy * prismScale, vz * prismScale, prx, pry, prz));
+      const p2s = p3s.map((p) => project3D(p.x, p.y, p.z));
+      for (const [i0, i1, i2] of tetFaces) {
+        const a = p3s[i0], b = p3s[i1], c = p3s[i2];
+        const zAvg = (a.z + b.z + c.z) / 3;
+        const ux = b.x - a.x, uy = b.y - a.y, uz = b.z - a.z;
+        const vx = c.x - a.x, vy = c.y - a.y, vz = c.z - a.z;
+        let nx = uy * vz - uz * vy;
+        let ny = uz * vx - ux * vz;
+        let nz = ux * vy - uy * vx;
+        const nLen = Math.hypot(nx, ny, nz) || 1;
+        nx /= nLen; ny /= nLen; nz /= nLen;
+        // Directional cathedral light from top-front-left
+        const lit = Math.max(0, -(nx * 0.35 + ny * 0.52 + nz * 0.78));
+        facesToDraw.push({
+          pts: [p2s[i0], p2s[i1], p2s[i2]],
+          zAvg,
+          lit,
+          isDual
+        });
+      }
+    };
+    buildTetFaces(tetA, false);
+    buildTetFaces(tetB, true);
+    facesToDraw.sort((a, b) => b.zAvg - a.zAvg); // Painter's back-to-front
+
+    ctx.save();
+    for (const f of facesToDraw) {
+      const alpha = 0.16 + 0.34 * f.lit + 0.14 * prismFlash;
+      if (picardy > 0.35) {
+        ctx.fillStyle = f.isDual
+          ? `rgba(255, 232, 165, ${alpha.toFixed(3)})`
+          : `rgba(255, 198, 96, ${alpha.toFixed(3)})`;
+      } else {
+        ctx.fillStyle = f.isDual
+          ? `rgba(${Math.round(235 + 20 * tension)}, ${Math.round(182 - 40 * tension)}, 125, ${alpha.toFixed(3)})`
+          : `rgba(125, 212, 255, ${alpha.toFixed(3)})`;
+      }
+      ctx.strokeStyle = `rgba(255, 248, 228, ${(0.38 + 0.48 * f.lit + 0.14 * picardy).toFixed(3)})`;
+      ctx.lineWidth = 1.35;
+
+      ctx.beginPath();
+      ctx.moveTo(f.pts[0].x, f.pts[0].y);
+      ctx.lineTo(f.pts[1].x, f.pts[1].y);
+      ctx.lineTo(f.pts[2].x, f.pts[2].y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // --------------------------------------------------------------------------
+    // LAYER 6: Front Hemisphere of 3D Gimbaled Rings + Horological Escapement Anchor
+    // --------------------------------------------------------------------------
+    drawRingPass(true);
+
+    // Rocking Clockwork Anchor Escapement Pallet at 12 o'clock of Ring 3
+    ctx.save();
+    const anchorY = CY - rings[3].radius - 16;
+    const palletRock = Math.sin(curStep * Math.PI) * 0.22 * (1 - 0.75 * picardy);
+    ctx.translate(CX, anchorY);
+    ctx.rotate(palletRock);
+    ctx.strokeStyle = `rgba(255, 224, 152, ${(0.72 + 0.25 * picardy).toFixed(3)})`;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(0, -18);
+    ctx.lineTo(0, 4);
+    ctx.moveTo(-26, 13);
+    ctx.quadraticCurveTo(0, -2, 26, 13);
+    ctx.moveTo(-26, 13);
+    ctx.lineTo(-22, 22);
+    ctx.moveTo(26, 13);
+    ctx.lineTo(22, 22);
+    ctx.stroke();
+    ctx.fillStyle = "#fff6db";
+    ctx.beginPath();
+    ctx.arc(0, -4, 3.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // --------------------------------------------------------------------------
+    // LAYER 7: 3D Perspective Mercury Acoustic Basin + FFT Mirror + Ripples
+    // --------------------------------------------------------------------------
+    ctx.save();
+    // Carved dark obsidian & brass elliptical pool
+    ctx.beginPath();
+    ctx.ellipse(CX, BASIN_Y, BASIN_RX, BASIN_RY, 0, 0, Math.PI * 2);
+    const poolGrad = ctx.createRadialGradient(CX, BASIN_Y - 12, 18, CX, BASIN_Y, BASIN_RX);
+    poolGrad.addColorStop(0, picardy > 0.35 ? "rgba(96, 68, 24, 0.92)" : "rgba(18, 36, 64, 0.92)");
+    poolGrad.addColorStop(0.68, picardy > 0.35 ? "rgba(32, 22, 10, 0.95)" : "rgba(8, 15, 28, 0.95)");
+    poolGrad.addColorStop(1, "rgba(4, 7, 14, 0.98)");
+    ctx.fillStyle = poolGrad;
+    ctx.fill();
+
+    // Clip interior of Mercury Basin for FFT spectral reflections & liquid ripples
+    ctx.save();
+    ctx.clip();
+    ctx.globalCompositeOperation = "lighter";
+
+    // Real-Time Mirrored Spectral Columns shimmering in the liquid mercury
+    const BARS = 44;
+    for (let b = 0; b < BARS; b++) {
+      const sym = Math.abs(b - (BARS - 1) * 0.5) / (BARS * 0.5);
+      const bin = Math.min(freqData.length - 1, Math.floor(2 + sym * 58));
+      const mag = (freqData[bin] / 255) * (1 - 0.35 * sym);
+      if (mag < 0.04) continue;
+      const bx = CX + ((b / (BARS - 1)) * 2 - 1) * (BASIN_RX * 0.84);
+      const bh = mag * BASIN_RY * 1.45;
+      const colGrad = ctx.createLinearGradient(bx, BASIN_Y - bh * 0.35, bx, BASIN_Y + bh * 0.75);
+      colGrad.addColorStop(0, "rgba(0,0,0,0)");
+      colGrad.addColorStop(0.45, picardy > 0.3
+        ? `rgba(255, 218, 125, ${(0.34 * mag).toFixed(3)})`
+        : `rgba(135, 212, 255, ${(0.28 * mag).toFixed(3)})`);
+      colGrad.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.strokeStyle = colGrad;
+      ctx.lineWidth = 4.5;
+      ctx.beginPath();
+      ctx.moveTo(bx, BASIN_Y - bh * 0.35);
+      ctx.lineTo(bx, BASIN_Y + bh * 0.75);
+      ctx.stroke();
+    }
+
+    // Perspective-Projected Concentric Liquid Interference Ripples
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      const rp = ripples[i];
+      rp.r += dt * 135;
+      const prog = rp.r / rp.maxR;
+      if (prog >= 1) {
+        ripples.splice(i, 1);
+        continue;
+      }
+      const a = rp.alpha * (1 - prog) * (1 - prog);
+      ctx.strokeStyle = rp.isGold || picardy > 0.3
+        ? `rgba(255, 226, 138, ${a.toFixed(3)})`
+        : voiceRGBA(rp.voice, a, picardy);
+      ctx.lineWidth = 1.9 * (1 - 0.5 * prog);
+      ctx.beginPath();
+      ctx.ellipse(rp.x, rp.y, rp.r, rp.r * (BASIN_RY / BASIN_RX), 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Engraved Double Brass Rim around Mercury Basin
+    ctx.strokeStyle = `rgba(242, 202, 128, ${(0.55 + 0.35 * picardy).toFixed(3)})`;
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.ellipse(CX, BASIN_Y, BASIN_RX, BASIN_RY, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = `rgba(242, 202, 128, ${(0.22 + 0.20 * picardy).toFixed(3)})`;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.ellipse(CX, BASIN_Y + 6, BASIN_RX + 10, BASIN_RY + 5, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    // --------------------------------------------------------------------------
+    // LAYER 8: Expanding Harmonic Shockwaves & Floating Gold-Leaf Dust Motes
+    // --------------------------------------------------------------------------
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    for (let i = shockwaves.length - 1; i >= 0; i--) {
+      const sw = shockwaves[i];
+      sw.r += dt * (sw.isPicardy ? 540 : 360);
+      const prog = sw.r / sw.maxR;
+      if (prog >= 1) {
+        shockwaves.splice(i, 1);
+        continue;
+      }
+      const a = sw.alpha * Math.pow(1 - prog, 1.8);
+      ctx.strokeStyle = sw.isPicardy
+        ? `rgba(255, 232, 152, ${a.toFixed(3)})`
+        : `rgba(245, 198, 128, ${(a * 0.65).toFixed(3)})`;
+      ctx.lineWidth = sw.isPicardy ? (6.0 * (1 - prog) + 1.2) : (3.0 * (1 - prog) + 0.8);
+      ctx.beginPath();
+      ctx.arc(CX, CY, sw.r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    const speedBoost = 1 + 1.6 * smoothEnergy + 0.8 * tension;
+    for (let i = 0; i < NUM_MOTES; i++) {
+      const m = motes[i];
+      m.x += (m.vx + Math.sin(elapsed * 1.4 + m.phase) * 10) * dt * (1 - 0.4 * picardy);
+      m.y += m.vy * dt * speedBoost * (1 - 0.35 * picardy);
+      if (m.y < -10) m.y = H + 10;
+      if (m.x < -10) m.x = W + 10;
+      if (m.x > W + 10) m.x = -10;
+
+      const tw = 0.45 + 0.55 * Math.sin(elapsed * 3.8 + m.phase);
+      const alpha = (0.18 + 0.36 * tw) * (0.65 + 0.55 * picardy);
+      ctx.fillStyle = picardy > 0.3 || m.hueType !== 0
+        ? `rgba(255, 224, 148, ${alpha.toFixed(3)})`
+        : `rgba(155, 224, 255, ${alpha.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, m.r * (0.8 + 0.4 * tw), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    if (rawElapsed < duration + 0.5) {
+      requestAnimationFrame(renderFrame);
+    }
+  }
+
+  requestAnimationFrame(renderFrame);
+}
+```

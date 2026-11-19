@@ -1,0 +1,370 @@
+I’ll check the bench’s confirmed product constraints, then compose the module as a single self-contained response.
+```js
+export const title = "The Glass Orchard";
+
+export function start({ audioContext, canvas, duration = 15, random }) {
+  const ctx = canvas.getContext("2d");
+  const W = 1080, H = 1350;
+  canvas.width = W;
+  canvas.height = H;
+
+  const bpm = 108;
+  const beat = 60 / bpm;
+  const end = Math.min(15, duration);
+  const startAt = audioContext.currentTime;
+  const rand = typeof random === "function" ? random : Math.random;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const midi = n => 440 * Math.pow(2, (n - 69) / 12);
+
+  const master = audioContext.createGain();
+  master.gain.value = 0.68;
+
+  const compressor = audioContext.createDynamicsCompressor();
+  compressor.threshold.value = -18;
+  compressor.knee.value = 18;
+  compressor.ratio.value = 3;
+  compressor.attack.value = 0.008;
+  compressor.release.value = 0.24;
+  master.connect(compressor);
+  compressor.connect(audioContext.destination);
+
+  const delay = audioContext.createDelay(1.2);
+  delay.delayTime.value = 0.31;
+  const feedback = audioContext.createGain();
+  feedback.gain.value = 0.21;
+  const wet = audioContext.createGain();
+  wet.gain.value = 0.18;
+  master.connect(delay);
+  delay.connect(feedback);
+  feedback.connect(delay);
+  delay.connect(wet);
+  wet.connect(compressor);
+
+  function voice(freq, t, length, amp, wave, pan = 0, cutoff = 6000, attack = 0.012) {
+    if (t >= end || length <= 0) return;
+    const when = startAt + Math.max(0, t);
+    const dur = Math.min(length, end - t);
+    if (dur <= 0) return;
+
+    const osc = audioContext.createOscillator();
+    const filter = audioContext.createBiquadFilter();
+    const gain = audioContext.createGain();
+    const panner = audioContext.createStereoPanner();
+
+    osc.type = wave;
+    osc.frequency.setValueAtTime(freq, when);
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(cutoff, when);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(300, cutoff * 0.48), when + dur);
+    filter.Q.value = 0.7;
+    panner.pan.value = pan;
+
+    const a = Math.min(attack, dur * 0.35);
+    const release = Math.min(0.12, dur * 0.55);
+    gain.gain.setValueAtTime(0.0001, when);
+    gain.gain.linearRampToValueAtTime(amp, when + a);
+    gain.gain.setValueAtTime(amp, Math.max(when + a, when + dur - release));
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(panner);
+    panner.connect(master);
+    osc.start(when);
+    osc.stop(when + dur + 0.015);
+  }
+
+  function pluck(note, t, length, amp, pan = 0) {
+    const f = midi(note);
+    voice(f, t, length, amp, "triangle", pan, 5200, 0.006);
+    voice(f * 2.01, t, Math.min(length * 0.58, 0.34), amp * 0.2, "sine", pan, 7600, 0.003);
+  }
+
+  function pad(notes, t, length, amp, pan = 0) {
+    for (let i = 0; i < notes.length; i++) {
+      voice(midi(notes[i]), t, length, amp / notes.length, "sine", pan + (i - 1) * 0.08, 2600, 0.24);
+      voice(midi(notes[i]) * 2, t, length * 0.72, amp * 0.075, "triangle", pan - (i - 1) * 0.06, 3600, 0.3);
+    }
+  }
+
+  function kick(t, strength = 1) {
+    if (t >= end) return;
+    const when = startAt + t;
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(112, when);
+    osc.frequency.exponentialRampToValueAtTime(42, when + 0.16);
+    gain.gain.setValueAtTime(0.0001, when);
+    gain.gain.exponentialRampToValueAtTime(0.22 * strength, when + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.2);
+    osc.connect(gain);
+    gain.connect(master);
+    osc.start(when);
+    osc.stop(when + 0.21);
+  }
+
+  function tick(t, amp = 0.025) {
+    if (t >= end) return;
+    const size = Math.floor(audioContext.sampleRate * 0.055);
+    const buffer = audioContext.createBuffer(1, size, audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < size; i++) {
+      const fade = 1 - i / size;
+      data[i] = (rand() * 2 - 1) * fade * fade;
+    }
+    const src = audioContext.createBufferSource();
+    const filter = audioContext.createBiquadFilter();
+    const gain = audioContext.createGain();
+    const when = startAt + t;
+    src.buffer = buffer;
+    filter.type = "highpass";
+    filter.frequency.value = 5200;
+    gain.gain.setValueAtTime(amp, when);
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.055);
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(master);
+    src.start(when);
+    src.stop(when + 0.06);
+  }
+
+  const chords = [
+    [50, 57, 62, 66], // Dm(add9)
+    [46, 53, 58, 62], // Bbmaj7
+    [41, 53, 57, 60], // Fmaj7
+    [48, 55, 60, 62], // Csus2
+    [50, 57, 62, 66],
+    [46, 53, 58, 62],
+    [50, 57, 62, 66]
+  ];
+  const bassRoots = [38, 34, 29, 36, 38, 34, 38];
+
+  for (let bar = 0; bar < 7; bar++) {
+    const t = bar * 4 * beat;
+    if (t >= end) break;
+    const chord = chords[bar];
+    pad(chord, t, Math.min(3.85 * beat, end - t), 0.105, bar % 2 ? 0.1 : -0.1);
+
+    const root = bassRoots[bar];
+    for (const [offset, note, dur, amp] of [
+      [0, root, 0.72, 0.12],
+      [1.5, root + 12, 0.34, 0.062],
+      [2, root + 7, 0.58, 0.088],
+      [3.25, root + 12, 0.28, 0.052]
+    ]) {
+      pluck(note, t + offset * beat, dur * beat, amp, -0.22);
+    }
+    kick(t, bar === 0 || bar === 4 ? 1 : 0.72);
+    kick(t + 2 * beat, 0.55);
+    tick(t + beat, 0.018);
+    tick(t + 3 * beat, 0.024);
+    tick(t + 3.5 * beat, 0.014);
+  }
+
+  // A six-note phrase that keeps returning with small changes.
+  const phrases = [
+    [[0, 74, 0.55], [0.75, 77, 0.34], [1.5, 81, 0.7], [2.5, 79, 0.42], [3, 77, 0.72]],
+    [[0, 74, 0.38], [0.5, 72, 0.38], [1, 77, 0.78], [2, 74, 0.42], [2.5, 70, 0.4], [3, 72, 0.76]],
+    [[0, 69, 0.52], [0.75, 72, 0.35], [1.5, 77, 0.75], [2.5, 76, 0.38], [3, 72, 0.72]],
+    [[0, 71, 0.38], [0.5, 74, 0.38], [1, 79, 0.72], [2, 77, 0.45], [2.75, 74, 0.38], [3.25, 72, 0.55]],
+    [[0, 74, 0.48], [0.5, 77, 0.35], [1, 81, 0.45], [1.75, 84, 0.78], [2.75, 81, 0.38], [3.25, 79, 0.62]],
+    [[0, 77, 0.42], [0.75, 74, 0.35], [1.5, 72, 0.7], [2.5, 70, 0.4], [3, 74, 0.7]],
+    [[0, 74, 0.55], [0.75, 77, 0.38], [1.5, 81, 0.6], [2.25, 84, 0.6], [3, 86, 0.86]]
+  ];
+
+  phrases.forEach((phrase, bar) => {
+    const base = bar * 4 * beat;
+    phrase.forEach(([at, note, len], i) => {
+      const t = base + at * beat;
+      pluck(note, t, len * beat, bar === 6 ? 0.105 : 0.082, 0.2 + (i % 3) * 0.1);
+      if (i === 2 || (bar === 6 && i === phrase.length - 1)) {
+        voice(midi(note + 12), t + 0.035, 0.72 * beat, 0.022, "sine", -0.12, 8200, 0.008);
+      }
+    });
+  });
+
+  // An answering, bell-like line enters halfway through.
+  const answer = [
+    [8.5, 86, 0.75], [9.5, 89, 0.8], [11, 86, 0.52],
+    [12.5, 84, 0.7], [14, 81, 0.6], [16.5, 86, 0.85],
+    [18, 89, 0.75], [20.5, 91, 0.9], [22, 89, 0.7],
+    [24.5, 86, 0.72], [26, 81, 0.95]
+  ];
+  answer.forEach(([b, note, len], i) => {
+    const t = b * beat;
+    pluck(note, t, len * beat, 0.052, i % 2 ? -0.35 : 0.35);
+    voice(midi(note + 7), t + 0.018, len * beat * 0.82, 0.013, "sine", 0, 9000, 0.012);
+  });
+
+  // Final low note, with a soft high overtone that rings into the cutoff.
+  const finalT = 27 * beat;
+  if (finalT < end) {
+    voice(midi(38), finalT, end - finalT, 0.11, "sine", 0, 1400, 0.12);
+    voice(midi(62), finalT, end - finalT, 0.035, "sine", 0.14, 3200, 0.18);
+  }
+
+  const seeds = Array.from({ length: 42 }, () => ({
+    a: rand() * Math.PI * 2,
+    r: 0.48 + rand() * 0.43,
+    size: 2 + rand() * 7,
+    phase: rand() * Math.PI * 2,
+    hue: rand()
+  }));
+  const petals = Array.from({ length: 12 }, (_, i) => ({
+    a: (i / 12) * Math.PI * 2,
+    length: 130 + rand() * 100,
+    width: 28 + rand() * 32,
+    phase: rand() * Math.PI * 2,
+    hue: rand()
+  }));
+
+  function draw(now) {
+    const elapsed = clamp(now - startAt, 0, end);
+    const beatPos = elapsed / beat;
+    const barPos = beatPos / 4;
+    const pulse = Math.exp(-((beatPos % 1) / 0.2));
+    const swell = 0.5 + 0.5 * Math.sin((elapsed / end) * Math.PI);
+    const cx = W * 0.5, cy = H * 0.49;
+    const turn = elapsed * 0.16;
+
+    ctx.fillStyle = "#101923";
+    ctx.fillRect(0, 0, W, H);
+
+    const glow = ctx.createRadialGradient(cx, cy, 20, cx, cy, 650);
+    glow.addColorStop(0, "rgba(52,101,111,0.33)");
+    glow.addColorStop(0.58, "rgba(31,57,68,0.19)");
+    glow.addColorStop(1, "rgba(12,20,28,0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+
+    // Fine engraved rings turn like the inside of a pocket instrument.
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(turn * 0.25);
+    for (let i = 0; i < 7; i++) {
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 168 + i * 35 + pulse * (i % 2 ? 5 : 2), 218 + i * 40, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(197,177,127,${0.14 - i * 0.012})`;
+      ctx.lineWidth = i === 0 ? 2 : 1;
+      ctx.stroke();
+    }
+    for (const s of seeds) {
+      const a = s.a + turn * (s.hue > 0.5 ? 1 : -0.72);
+      const r = 180 + s.r * 310 + Math.sin(elapsed * 1.3 + s.phase) * 9;
+      const x = Math.cos(a) * r;
+      const y = Math.sin(a) * r * 1.12;
+      ctx.beginPath();
+      ctx.arc(x, y, s.size * (0.7 + pulse * 0.3), 0, Math.PI * 2);
+      ctx.fillStyle = s.hue > 0.5 ? "rgba(220,192,130,0.58)" : "rgba(126,190,183,0.45)";
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // A twelve-petalled glass flower opens and closes with the phrase.
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(-turn * 0.7 + Math.sin(elapsed * 0.22) * 0.06);
+    for (const p of petals) {
+      const bloom = 0.75 + 0.25 * Math.sin(elapsed * 1.7 + p.phase);
+      ctx.save();
+      ctx.rotate(p.a);
+      ctx.beginPath();
+      ctx.moveTo(0, 12);
+      ctx.bezierCurveTo(p.width * bloom, -p.length * 0.25, p.width * 0.72, -p.length * 0.8, 0, -p.length * bloom);
+      ctx.bezierCurveTo(-p.width * 0.72, -p.length * 0.8, -p.width * bloom, -p.length * 0.25, 0, 12);
+      ctx.fillStyle = p.hue > 0.55
+        ? `rgba(226,194,130,${0.16 + pulse * 0.09})`
+        : `rgba(119,189,184,${0.16 + pulse * 0.1})`;
+      ctx.strokeStyle = "rgba(224,218,185,0.52)";
+      ctx.lineWidth = 1.4;
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.beginPath();
+    ctx.arc(0, 0, 23 + pulse * 5, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(244,214,149,0.92)";
+    ctx.shadowColor = "rgba(255,220,151,0.8)";
+    ctx.shadowBlur = 18 + pulse * 18;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    // Stems bend toward a slowly moving constellation of notes.
+    ctx.save();
+    ctx.translate(cx, cy);
+    for (let i = 0; i < 5; i++) {
+      const a = i * Math.PI * 0.4 + turn;
+      const sway = Math.sin(elapsed * 0.8 + i) * 22;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * 15, Math.sin(a) * 15);
+      ctx.quadraticCurveTo(
+        Math.cos(a + 0.3) * (200 + sway),
+        Math.sin(a + 0.3) * (250 + sway),
+        Math.cos(a) * (290 + sway),
+        Math.sin(a) * (350 + sway)
+      );
+      ctx.strokeStyle = "rgba(124,181,158,0.34)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Five floating staff lines translate pitch into height and make each note visible.
+    for (let line = 0; line < 5; line++) {
+      const y = H * 0.79 + line * 19;
+      ctx.beginPath();
+      ctx.moveTo(145, y);
+      ctx.bezierCurveTo(350, y - 18, 700, y + 16, 935, y - 5);
+      ctx.strokeStyle = "rgba(217,203,161,0.19)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    const activeBar = Math.floor(beatPos / 4);
+    const noteStep = beatPos % 4;
+    for (let i = 0; i < 7; i++) {
+      const x = 175 + i * 112;
+      const y = 832 - ((i * 3 + activeBar) % 7) * 19;
+      const lit = i === Math.floor(noteStep * 1.75) % 7;
+      ctx.beginPath();
+      ctx.ellipse(x, y, 8 + (lit ? pulse * 6 : 0), 5 + (lit ? pulse * 3 : 0), -0.35, 0, Math.PI * 2);
+      ctx.fillStyle = lit ? "rgba(244,214,149,0.95)" : "rgba(157,190,171,0.62)";
+      ctx.fill();
+      if (lit) {
+        ctx.beginPath();
+        ctx.moveTo(x + 7, y);
+        ctx.lineTo(x + 7, y - 48);
+        ctx.strokeStyle = "rgba(244,214,149,0.72)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    }
+
+    // A thin orbit marks the advancing measure without text or labels.
+    const orbitR = 445;
+    const orbitA = barPos * Math.PI * 0.5 - Math.PI * 0.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, orbitR, -Math.PI / 2, orbitA);
+    ctx.strokeStyle = `rgba(232,198,132,${0.26 + swell * 0.18})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(orbitA) * orbitR, cy + Math.sin(orbitA) * orbitR, 6 + pulse * 4, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(246,220,161,0.95)";
+    ctx.fill();
+
+    if (elapsed < end && typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(frame);
+    }
+  }
+
+  function frame() {
+    draw(audioContext.currentTime);
+  }
+
+  draw(startAt);
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(frame);
+}
+```

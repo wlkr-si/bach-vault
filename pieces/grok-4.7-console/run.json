@@ -1,0 +1,58 @@
+{
+  "wallSeconds": {
+    "value": 1686.179,
+    "source": "tool-result"
+  },
+  "toolReportedDurationSeconds": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "inputTokens": {
+    "value": 1422,
+    "source": "tool-result"
+  },
+  "outputTokens": {
+    "value": 105464,
+    "source": "tool-result"
+  },
+  "reasoningTokens": {
+    "value": 86774,
+    "source": "tool-result"
+  },
+  "cachedReadTokens": {
+    "value": 1152,
+    "source": "tool-result"
+  },
+  "cachedWriteTokens": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "reportedCostUsd": {
+    "value": 0.6339,
+    "source": "tool-result"
+  },
+  "reportedModelId": {
+    "value": "grok-4.7",
+    "source": "tool-result"
+  },
+  "requestedModelId": {
+    "value": "grok-4.7",
+    "source": "tool-result"
+  },
+  "tool": {
+    "value": "OpenCode Console",
+    "source": "tool-result"
+  },
+  "toolVersion": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "effort": {
+    "value": "high",
+    "source": "tool-result"
+  },
+  "effortSetting": {
+    "value": "high",
+    "source": "tool-result"
+  }
+}
