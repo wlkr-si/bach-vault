@@ -104,6 +104,13 @@ export type VaultIndex = {
   pieces: VaultEntry[]
 }
 
+export type Timeline = {
+  env: number[]
+  notes: [number, number][]
+  heat: string[]
+  colors: [number, string][]
+}
+
 export type VaultDetail = {
   schemaVersion: 1
   revision: string
@@ -112,5 +119,8 @@ export type VaultDetail = {
   measurements: Measurements
   analysis: Analysis
   scores: FixedScores & FieldScores
+  timeline: Timeline
   recordUrl: string
+  moduleUrl: string
+  replyUrl: string
 }

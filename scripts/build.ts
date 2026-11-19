@@ -3,9 +3,9 @@ import { isDeepStrictEqual } from 'node:util'
 import { mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { addBalance, titleWords } from '../bench/scores/balance.mjs'
 import { fieldScores } from '../bench/scores/field.mjs'
-import { json, publicOrigin, readJson, recordOrigin, sha256 } from './vault.ts'
+import { json, publicOrigin, rawRecordOrigin, readJson, recordOrigin, sha256 } from './vault.ts'
 import type {
-  Analysis, Features, FieldScores, Measurements, Metadata, Signals, VaultDetail, VaultEntry, VaultIndex,
+  Analysis, Features, FieldScores, Measurements, Metadata, Signals, Timeline, VaultDetail, VaultEntry, VaultIndex,
 } from './types.ts'
 
 function readRecord(slug: string) {
@@ -29,6 +29,7 @@ function readRecord(slug: string) {
     metadata,
     measurements: readJson<Measurements>(path + '/run.json'),
     analysis: readJson<Analysis>(path + '/analysis.json'),
+    timeline: readJson<Timeline>(path + '/timeline.json'),
     scores: { ...fixed } as Signals['measurements'] & Partial<FieldScores>,
     features: { ...measurement.features, words: new Set(titleWords(fixed.title)) },
   }
@@ -51,16 +52,18 @@ function build() {
   for (const word of words) counts.set(word, (counts.get(word) ?? 0) + 1)
   const titleWordCounts = Object.fromEntries(counts)
 
-  const details = records.map(({ metadata, measurements, analysis, scores }) => {
+  const details = records.map(({ metadata, measurements, analysis, timeline, scores }) => {
     const slug = scores.id
     if (scores.uniqueness === undefined || !scores.uniquenessMeasures || !scores.map ||
         scores.balance === undefined || !scores.standing) {
       throw new Error('Missing field scores: ' + slug)
     }
     return {
-      schemaVersion: 1 as const, slug, metadata, measurements, analysis,
+      schemaVersion: 1 as const, slug, metadata, measurements, analysis, timeline,
       scores: scores as VaultDetail['scores'],
       recordUrl: recordOrigin + '/' + slug,
+      moduleUrl: rawRecordOrigin + '/' + slug + '/piece.js',
+      replyUrl: rawRecordOrigin + '/' + slug + '/reply.txt',
     }
   })
 

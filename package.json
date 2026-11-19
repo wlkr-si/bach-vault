@@ -10,7 +10,7 @@
     "integrity": "node scripts/integrity.ts",
     "determinism": "node scripts/build.ts --check",
     "typecheck": "tsc",
-    "lint": "eslint scripts bench/scores"
+    "lint": "eslint scripts bench/scores bench/timeline.mjs"
   },
   "dependencies": {
     "playwright": "1.65.1"

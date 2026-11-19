@@ -14,6 +14,8 @@ models here or judge, describe or rank their Pieces.
    Add the resulting `signals.json` with the other permanent files under
    `pieces/<slug>/`. MEDIA_ROOT holds each Piece in a directory named by slug
    with the Clip, metadata, public run readings and analysis alongside it.
+   Generate the analytics timeline with
+   `node bench/timeline.mjs CLIP pieces/<slug>/timeline.json`.
 3. Append the file and media entries to `manifest.json`. Run the media upload
    dry run first with `node scripts/media.ts STAGING_ROOT --dry-run`. Media
    paths under STAGING_ROOT match their manifest keys. Review every checksum,

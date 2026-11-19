@@ -17,8 +17,10 @@ words across the active field. Numeric measurements and scores can be null
 where the method allows missing readings. See the [contract types](scripts/types.ts).
 
 The detail document adds metadata, public run readings, the full analysis
-and score breakdown, and the permanent record URL. Read details from the current
-index. The index and details under `derived/` send a 60-second cache lifetime. Permanent media
+and score breakdown, and the timeline for the frequency, pitch, level and
+colour chart. It links to the permanent record, module and final reply. Read
+details from the current index. The index and details under `derived/` send a
+60-second cache lifetime. Permanent media
 sends a one-year immutable lifetime. A withdrawal removes a Piece from the
 next index and active field. Its record and original media stay available.
 
