@@ -1,0 +1,66 @@
+{
+  "wallSeconds": {
+    "value": 480.79479466600003,
+    "source": "tool-result"
+  },
+  "toolReportedDurationSeconds": {
+    "value": 480.526,
+    "source": "tool-result"
+  },
+  "inputTokens": {
+    "value": 2,
+    "source": "tool-result"
+  },
+  "outputTokens": {
+    "value": 49840,
+    "source": "tool-result"
+  },
+  "reasoningTokens": {
+    "value": 36467,
+    "source": "tool-result"
+  },
+  "cachedReadTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "cachedWriteTokens": {
+    "value": 849,
+    "source": "tool-result"
+  },
+  "reportedCostUsd": {
+    "value": 1.0036,
+    "source": "tool-result"
+  },
+  "reportedModelId": {
+    "value": "claude-opus-5-5",
+    "source": "tool-result"
+  },
+  "requestedModelId": {
+    "value": "claude-opus-5-5",
+    "source": "tool-result"
+  },
+  "tool": {
+    "value": "claude",
+    "source": "tool-result"
+  },
+  "toolVersion": {
+    "value": "2.1.327 (Claude Code)",
+    "source": "tool-result"
+  },
+  "effort": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "effortSetting": {
+    "value": "high",
+    "source": "tool-result"
+  },
+  "cacheWrite5mTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "cacheWrite1hTokens": {
+    "value": 849,
+    "source": "tool-result"
+  }
+}

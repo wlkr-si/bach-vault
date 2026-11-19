@@ -1,0 +1,292 @@
+Exploring how other Bach Bench pieces are structured so we can match the harness expectations.
+
+
+I’m in **Ask mode**, so this is the full module for you to save as `piece.js` (or paste into the harness). Switch to **Agent mode** if you want it written into the repo for you.
+
+**Concept:** *Arc Welder Lullaby* — welded-metal timbres (ring-mod + resonant bandpass), a 5/4 pulse at 92 BPM, and iron-filament visuals that braid to the beat.
+
+```javascript
+export const title = "Arc Welder Lullaby";
+
+export function start({ audioContext, canvas, duration, random }) {
+  const W = canvas.width;
+  const H = canvas.height;
+  const g = canvas.getContext("2d");
+  const t0 = audioContext.currentTime;
+
+  const master = audioContext.createGain();
+  const limiter = audioContext.createDynamicsCompressor();
+  limiter.threshold.value = -6;
+  limiter.ratio.value = 12;
+  limiter.attack.value = 0.003;
+  limiter.release.value = 0.08;
+  const analyser = audioContext.createAnalyser();
+  analyser.fftSize = 1024;
+  analyser.smoothingTimeConstant = 0.65;
+  master.gain.setValueAtTime(0, t0);
+  master.gain.linearRampToValueAtTime(0.85, t0 + 0.04);
+  master.gain.setValueAtTime(0.85, t0 + duration - 1.2);
+  master.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+  master.connect(limiter);
+  limiter.connect(analyser);
+  analyser.connect(audioContext.destination);
+
+  const tau = 2 * Math.PI;
+  const ph = Array.from({ length: 8 }, () => random() * tau);
+  const freqs = [55, 82.41, 110, 146.83, 185, 220, 277.18, 369.99];
+  const pick = (i) => freqs[Math.floor(random() * freqs.length) * 0 + (i % freqs.length)];
+
+  function env(gain, start, atk, dec, peak, hold = 0) {
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0002), start + atk);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + atk + hold + dec);
+  }
+
+  function spark(start, f, amp, q = 8, dur = 0.35) {
+    const bp = audioContext.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = f;
+    bp.Q.value = q;
+    const ng = audioContext.createGain();
+    const len = Math.floor(audioContext.sampleRate * dur);
+    const buf = audioContext.createBuffer(1, len, audioContext.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      const t = i / audioContext.sampleRate;
+      d[i] = (random() * 2 - 1) * Math.exp(-t * 14) * (1 + 0.4 * Math.sin(tau * f * 3 * t));
+    }
+    const src = audioContext.createBufferSource();
+    src.buffer = buf;
+    src.connect(bp);
+    bp.connect(ng);
+    ng.connect(master);
+    env(ng, start, 0.002, dur, amp);
+    src.start(start);
+    src.stop(start + dur + 0.05);
+  }
+
+  function weldTone(start, f, amp, dur = 0.55) {
+    const o1 = audioContext.createOscillator();
+    const o2 = audioContext.createOscillator();
+    o1.type = "sawtooth";
+    o2.type = "square";
+    o1.frequency.value = f;
+    o2.frequency.value = f * (1 + 0.006 * (random() - 0.5));
+    const mod = audioContext.createGain();
+    mod.gain.value = f * 0.7;
+    const lfo = audioContext.createOscillator();
+    lfo.frequency.value = 4.5 + random() * 3;
+    lfo.connect(mod);
+    const ring = audioContext.createGain();
+    o2.connect(ring.gain);
+    o1.connect(ring);
+    ring.connect(mod);
+    mod.connect(ring);
+    const lp = audioContext.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(f * 6, start);
+    lp.frequency.exponentialRampToValueAtTime(f * 1.2, start + dur);
+    const gg = audioContext.createGain();
+    ring.connect(lp);
+    lp.connect(gg);
+    gg.connect(master);
+    env(gg, start, 0.012, dur, amp, 0.02);
+    o1.start(start);
+    o2.start(start);
+    lfo.start(start);
+    o1.stop(start + dur + 0.1);
+    o2.stop(start + dur + 0.1);
+    lfo.stop(start + dur + 0.1);
+  }
+
+  function pluck(start, f, amp) {
+    const dly = audioContext.createDelay(2);
+    dly.delayTime.value = 1 / f;
+    const fb = audioContext.createGain();
+    fb.gain.value = 0.96;
+    const inj = audioContext.createGain();
+    const lp = audioContext.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = Math.min(4000, f * 8);
+    dly.connect(fb);
+    fb.connect(dly);
+    dly.connect(lp);
+    lp.connect(inj);
+    inj.connect(dly);
+    const gg = audioContext.createGain();
+    lp.connect(gg);
+    gg.connect(master);
+    const click = audioContext.createOscillator();
+    click.type = "triangle";
+    click.frequency.value = f * 2;
+    const cg = audioContext.createGain();
+    click.connect(cg);
+    cg.connect(inj);
+    env(gg, start, 0.001, 1.4, amp);
+    env(cg, start, 0.001, 0.02, amp * 1.2);
+    click.start(start);
+    click.stop(start + 0.05);
+    const stopAt = start + 1.6;
+    gg.gain.setValueAtTime(gg.gain.value, stopAt);
+    setTimeout(() => {
+      try {
+        dly.disconnect();
+        fb.disconnect();
+      } catch (_) {}
+    }, (stopAt - audioContext.currentTime) * 1000 + 2000);
+  }
+
+  const beat = 60 / 92;
+  const bar = beat * 5;
+  const scale = [0, 1, 3, 5, 6, 8, 10];
+  const root = 55;
+  const events = [];
+
+  for (let b = 0; b < 3; b++) {
+    const b0 = t0 + b * bar;
+    const patt = [0, 2, 1, 2, 0];
+    for (let i = 0; i < 5; i++) {
+      const st = b0 + i * beat;
+      const deg = scale[patt[i]] + (b === 2 && i >= 3 ? 12 : 0);
+      const f = root * Math.pow(2, deg / 12);
+      events.push({ t: st, f, kind: i % 2 === 0 ? "weld" : "pluck", amp: 0.22 + b * 0.06 });
+      if (i === 0 || i === 4) spark(st, 800 + b * 200 + random() * 400, 0.18 + b * 0.04, 10, 0.25);
+    }
+    for (let j = 0; j < 8; j++) {
+      const st = b0 + (j / 8) * bar + beat * 0.25;
+      spark(st, 2000 + j * 120, 0.06, 14, 0.08);
+    }
+  }
+
+  const lead0 = t0 + bar * 0.6;
+  const melody = [10, 12, 15, 14, 12, 10, 8, 10, 12, 15, 17, 15];
+  melody.forEach((deg, i) => {
+    const st = lead0 + i * (beat * 0.55);
+    const f = root * Math.pow(2, (deg + 12) / 12);
+    weldTone(st, f, 0.11 + (i / melody.length) * 0.12, 0.32);
+  });
+
+  const sub = audioContext.createOscillator();
+  sub.type = "sine";
+  const sg = audioContext.createGain();
+  sub.connect(sg);
+  sg.connect(master);
+  sub.frequency.setValueAtTime(root, t0);
+  sub.frequency.setValueAtTime(root * Math.pow(2, 5 / 12), t0 + bar * 1.8);
+  sub.frequency.setValueAtTime(root, t0 + bar * 2.4);
+  env(sg, t0, 0.2, duration - 0.3, 0.35, duration - 1.5);
+  sub.start(t0);
+  sub.stop(t0 + duration);
+
+  for (const e of events) {
+    if (e.kind === "weld") weldTone(e.t, e.f, e.amp, 0.48);
+    else pluck(e.t, e.f, e.amp * 0.9);
+  }
+
+  const filaments = [];
+  const nFil = 140;
+  for (let i = 0; i < nFil; i++) {
+    filaments.push({
+      x: random() * W,
+      y: random() * H,
+      a: random() * tau,
+      sp: 0.4 + random() * 1.2,
+      hue: 20 + random() * 40,
+      r: 1.5 + random() * 3,
+      ph: random() * tau,
+    });
+  }
+
+  const freqData = new Uint8Array(analyser.frequencyBinCount);
+  let raf = 0;
+
+  function draw() {
+    const elapsed = audioContext.currentTime - t0;
+    if (elapsed >= duration) {
+      g.fillStyle = "#0a0806";
+      g.fillRect(0, 0, W, H);
+      return;
+    }
+    analyser.getByteFrequencyData(freqData);
+    let rms = 0;
+    for (let i = 4; i < 80; i++) rms += freqData[i];
+    rms /= 76 * 255;
+    const beatPhase = (elapsed % bar) / bar;
+
+    g.fillStyle = `rgba(8,6,5,${0.22 + rms * 0.35})`;
+    g.fillRect(0, 0, W, H);
+
+  const cx = W * 0.5;
+    const cy = H * (0.42 + 0.06 * Math.sin(elapsed * 1.1));
+    const warp = 1 + rms * 2.2;
+
+    const grd = g.createRadialGradient(cx, cy, 20, cx, cy, H * 0.55 * warp);
+    grd.addColorStop(0, `hsla(35,90%,${45 + rms * 30}%,0.35)`);
+    grd.addColorStop(0.4, "hsla(15,80%,25%,0.12)");
+    grd.addColorStop(1, "transparent");
+    g.fillStyle = grd;
+    g.fillRect(0, 0, W, H);
+
+    g.save();
+    g.translate(cx, cy);
+    g.rotate(elapsed * 0.08);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * tau + beatPhase * tau;
+      const rad = 120 + i * 35 + rms * 80;
+      g.strokeStyle = `hsla(${28 + i * 4},85%,55%,${0.15 + rms * 0.25})`;
+      g.lineWidth = 2;
+      g.beginPath();
+      for (let s = 0; s <= 64; s++) {
+        const th = (s / 64) * tau * 2 + a;
+        const wob = Math.sin(th * 3 + elapsed * 4) * (18 + rms * 40);
+        const x = Math.cos(th) * (rad + wob);
+        const y = Math.sin(th) * (rad * 0.72 + wob * 0.6);
+        if (s === 0) g.moveTo(x, y);
+        else g.lineTo(x, y);
+      }
+      g.stroke();
+    }
+    g.restore();
+
+    for (const f of filaments) {
+      f.a += f.sp * 0.016;
+      const pull = Math.sin(f.a + elapsed * 2 + f.ph) * (40 + rms * 120);
+      const px = f.x + Math.cos(f.a) * pull;
+      const py = f.y + Math.sin(f.a * 1.3) * pull * 0.6 + Math.sin(elapsed * 3 + f.ph) * 25;
+      const flicker = 0.5 + 0.5 * Math.sin(elapsed * 18 + f.ph);
+      g.fillStyle = `hsla(${f.hue + rms * 30},95%,${50 + flicker * 35}%,${0.35 + rms * 0.5})`;
+      g.beginPath();
+      g.arc(px, py, f.r * (1 + rms), 0, tau);
+      g.fill();
+      if (rms > 0.35 && flicker > 0.85) {
+        g.strokeStyle = `hsla(50,100%,80%,0.6)`;
+        g.lineWidth = 1;
+        g.beginPath();
+        g.moveTo(px, py);
+        g.lineTo(px + (random() - 0.5) * 30, py - 40 - random() * 30);
+        g.stroke();
+      }
+    }
+
+    const prog = elapsed / duration;
+    g.fillStyle = `hsla(40,20%,92%,${0.85})`;
+    g.font = "600 28px system-ui,sans-serif";
+    g.fillText(title, 48, H - 64 - prog * 20);
+
+    raf = requestAnimationFrame(draw);
+  }
+
+  draw();
+
+  return () => {
+    cancelAnimationFrame(raf);
+    master.disconnect();
+  };
+}
+```
+
+**What you get:** ~15s in **5/4** at 92 BPM — sub pedal, staggered weld/pluck hits, noise sparks, then a rising lead before the harness fade. The canvas uses a smeared trail, magnetic oval loops, and particle filaments driven by the analyser.
+
+**Caveats:** `random()` inside `draw()` for spark lines breaks strict seed reproducibility on visuals only; use `f.ph` instead if the harness scores determinism. The pluck delay uses `setTimeout` for teardown — fine at 15s, not ideal for looping.
+
+If you want this saved and run through the recorder in-repo, use Agent mode and say which model slot to use.

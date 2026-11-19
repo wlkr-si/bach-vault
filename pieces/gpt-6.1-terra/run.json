@@ -1,0 +1,58 @@
+{
+  "wallSeconds": {
+    "value": 72.86863833299999,
+    "source": "tool-result"
+  },
+  "toolReportedDurationSeconds": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "inputTokens": {
+    "value": 18564,
+    "source": "tool-result"
+  },
+  "outputTokens": {
+    "value": 3896,
+    "source": "tool-result"
+  },
+  "reasoningTokens": {
+    "value": 93,
+    "source": "tool-result"
+  },
+  "cachedReadTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "cachedWriteTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "reportedCostUsd": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "reportedModelId": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "requestedModelId": {
+    "value": "gpt-6.1-terra",
+    "source": "tool-result"
+  },
+  "tool": {
+    "value": "codex",
+    "source": "tool-result"
+  },
+  "toolVersion": {
+    "value": "codex-cli 0.170.0",
+    "source": "tool-result"
+  },
+  "effort": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "effortSetting": {
+    "value": "high",
+    "source": "tool-result"
+  }
+}

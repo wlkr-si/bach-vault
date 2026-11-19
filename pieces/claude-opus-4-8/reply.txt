@@ -1,0 +1,249 @@
+```javascript
+export const title = "Aurora Engine";
+
+export function start({ audioContext, canvas, duration, random }) {
+  const ctx = audioContext;
+  const T = Math.min(duration || 15, 15);
+  const beat = 0.46875;            // 128 BPM
+  const bar = beat * 4;
+  const t0 = ctx.currentTime + 0.12;
+  const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+
+  // ---------------- audio graph ----------------
+  const master = ctx.createGain();
+  master.gain.value = 0.85;
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -14; comp.knee.value = 24; comp.ratio.value = 4;
+  comp.attack.value = 0.004; comp.release.value = 0.18;
+  master.connect(comp).connect(ctx.destination);
+
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.78;
+  comp.connect(analyser);
+
+  const convolver = ctx.createConvolver();
+  const irLen = Math.floor(ctx.sampleRate * 2.2);
+  const ir = ctx.createBuffer(2, irLen, ctx.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const d = ir.getChannelData(c);
+    for (let i = 0; i < irLen; i++) d[i] = (random() * 2 - 1) * Math.pow(1 - i / irLen, 2.6);
+  }
+  convolver.buffer = ir;
+  const revGain = ctx.createGain(); revGain.gain.value = 0.34;
+  convolver.connect(revGain).connect(master);
+
+  const noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.5), ctx.sampleRate);
+  { const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = random() * 2 - 1; }
+
+  function synth(time, freq, dur, o) {
+    o = o || {};
+    const peak = o.gain || 0.2, cut = o.filter || 2200;
+    const atk = o.attack != null ? o.attack : 0.01;
+    const rel = o.release != null ? o.release : 0.25;
+    const send = o.reverb != null ? o.reverb : 0.25;
+    const g = ctx.createGain();
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = o.Q || 1;
+    f.frequency.setValueAtTime(Math.min(cut * 2.2, 16000), time);
+    f.frequency.exponentialRampToValueAtTime(Math.max(cut * 0.5, 120), time + dur + rel);
+    const o1 = ctx.createOscillator(); o1.type = o.type || 'sawtooth'; o1.frequency.value = freq; o1.connect(f);
+    let o2;
+    if (o.detune) { o2 = ctx.createOscillator(); o2.type = o1.type; o2.frequency.value = freq; o2.detune.value = o.detune; o2.connect(f); }
+    f.connect(g); g.connect(master);
+    if (send > 0) { const s = ctx.createGain(); s.gain.value = send; g.connect(s); s.connect(convolver); }
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.exponentialRampToValueAtTime(peak, time + atk);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + dur + rel);
+    o1.start(time); o1.stop(time + dur + rel + 0.05);
+    if (o2) { o2.start(time); o2.stop(time + dur + rel + 0.05); }
+  }
+  function kick(time) {
+    const o = ctx.createOscillator(); o.type = 'sine';
+    const g = ctx.createGain();
+    o.frequency.setValueAtTime(150, time);
+    o.frequency.exponentialRampToValueAtTime(45, time + 0.12);
+    g.gain.setValueAtTime(0.95, time);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.35);
+    o.connect(g).connect(master); o.start(time); o.stop(time + 0.4);
+  }
+  function noise(time, dur, hp, gainv, q) {
+    const s = ctx.createBufferSource(); s.buffer = noiseBuf;
+    const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp; if (q) f.Q.value = q;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(gainv, time);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+    s.connect(f).connect(g).connect(master); s.start(time); s.stop(time + dur + 0.05);
+  }
+  function snareHit(time) {
+    noise(time, 0.16, 1600, 0.3, 0.6);
+    const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = 180;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.22, time);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.1);
+    o.connect(g).connect(master); o.start(time); o.stop(time + 0.12);
+  }
+
+  // ---------------- composition ----------------
+  const prog = [
+    { bass: 45, notes: [57, 60, 64] }, // Am
+    { bass: 41, notes: [53, 57, 60] }, // F
+    { bass: 48, notes: [60, 64, 67] }, // C
+    { bass: 43, notes: [55, 59, 62] }, // G
+  ];
+  const kickTimes = [], hitTimes = [];
+
+  for (let b = 0; b < 8; b++) {
+    const bt = b * bar, ch = prog[b % 4];
+    synth(t0 + bt, mtof(ch.bass - 12), beat * 1.9, { type: 'triangle', gain: 0.5, filter: 620, attack: 0.01, release: 0.3, reverb: 0.05 });
+    synth(t0 + bt + beat * 2, mtof(ch.bass - 12), beat * 1.9, { type: 'triangle', gain: 0.45, filter: 620, attack: 0.01, release: 0.3, reverb: 0.05 });
+    ch.notes.forEach(n => synth(t0 + bt, mtof(n), bar * 0.98, { type: 'sawtooth', gain: 0.08, filter: 1300, attack: 0.09, release: 0.6, detune: 9, reverb: 0.42 }));
+    kick(t0 + bt); kickTimes.push(bt);
+    kick(t0 + bt + beat * 2); kickTimes.push(bt + beat * 2);
+    if (b >= 1) for (let e = 0; e < 8; e++) noise(t0 + bt + e * (beat / 2), 0.04, 9000, e % 2 ? 0.14 : 0.08);
+    if (b >= 2) { snareHit(t0 + bt + beat); snareHit(t0 + bt + beat * 3); hitTimes.push(bt + beat, bt + beat * 3); }
+  }
+  for (let s = 0; s < 128; s++) {
+    const b = Math.floor(s / 16), ch = prog[b % 4];
+    if (b < 1) continue;
+    const seq = [ch.notes[0], ch.notes[1], ch.notes[2], ch.notes[0] + 12];
+    const n = seq[s % 4] + 12;
+    synth(t0 + s * (beat / 4), mtof(n), beat / 4 * 0.9, { type: 'triangle', gain: 0.055 + (s % 4 === 0 ? 0.03 : 0), filter: 3200, attack: 0.004, release: 0.09, reverb: 0.3 });
+  }
+  const mel = [
+    [0, 69, 1.5], [1.5, 72, .5], [2, 76, 1], [3, 74, 1],
+    [4, 72, 1.5], [5.5, 69, .5], [6, 77, 1], [7, 76, 1],
+    [8, 76, 1], [9, 79, 1], [10, 76, 1], [11, 72, 1],
+    [12, 74, 1.5], [13.5, 71, .5], [14, 67, 2],
+    [16, 81, .5], [16.5, 79, .5], [17, 76, .5], [17.5, 72, .5], [18, 76, 1], [19, 81, 1],
+    [20, 77, 1], [21, 81, 1], [22, 84, 1], [23, 81, 1],
+    [24, 79, 1], [25, 76, 1], [26, 72, 1], [27, 76, 1],
+    [28, 74, 1], [29, 71, 1], [30, 69, 2],
+  ];
+  mel.forEach(([bp, m, db]) => {
+    synth(t0 + bp * beat, mtof(m), db * beat * 0.9, { type: 'sawtooth', gain: 0.17, filter: 2700, attack: 0.015, release: 0.32, detune: 11, reverb: 0.46, Q: 1.2 });
+    hitTimes.push(bp * beat);
+  });
+  // final shimmer resolve
+  [69, 72, 76, 81].forEach((n, i) => synth(t0 + 30 * beat, mtof(n), 3, { type: 'triangle', gain: 0.06, filter: 2600, attack: 0.2, release: 1.2, reverb: 0.6, detune: i * 4 }));
+  hitTimes.sort((a, b) => a - b);
+
+  // ---------------- visuals ----------------
+  const g = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height, cx = W / 2, cy = H * 0.5;
+  g.fillStyle = '#05060d'; g.fillRect(0, 0, W, H);
+  const freq = new Uint8Array(analyser.frequencyBinCount);
+  const wave = new Uint8Array(analyser.fftSize);
+  const stars = [];
+  for (let i = 0; i < 140; i++) stars.push({ x: random() * W, y: random() * H, r: random() * 1.8 + 0.3, ph: random() * 6.28 });
+  const particles = [];
+  const hues = [190, 270, 45, 140];
+  let sBass = 0, sMid = 0, sHigh = 0, hueC = hues[0], flash = 0, kc = 0, hcur = 0;
+  const avg = (a, lo, hi) => { let s = 0; for (let i = lo; i < hi; i++) s += a[i]; return s / ((hi - lo) * 255); };
+
+  function spawn(hue, n, pow) {
+    for (let i = 0; i < n; i++) {
+      const a = random() * 6.283, sp = 3 + random() * 7 * pow;
+      particles.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1, life: 1, hue: hue + random() * 40 - 20, size: 2 + random() * 4 });
+    }
+  }
+
+  function frame() {
+    const elapsed = ctx.currentTime - t0;
+    if (elapsed >= T + 0.4) return;
+    requestAnimationFrame(frame);
+    analyser.getByteFrequencyData(freq);
+    analyser.getByteTimeDomainData(wave);
+    const et = Math.max(0, elapsed);
+    sBass += (avg(freq, 1, 12) - sBass) * 0.3;
+    sMid += (avg(freq, 12, 60) - sMid) * 0.25;
+    sHigh += (avg(freq, 60, 220) - sHigh) * 0.3;
+    const bi = Math.floor(et / bar) % 4;
+    const targetHue = hues[bi];
+    let dh = targetHue - hueC; if (dh > 180) dh -= 360; if (dh < -180) dh += 360;
+    hueC = (hueC + dh * 0.05 + 360) % 360;
+
+    while (kc < kickTimes.length && et >= kickTimes[kc]) { spawn(hueC, 26, 1 + sBass); flash = 1; kc++; }
+    while (hcur < hitTimes.length && et >= hitTimes[hcur]) { flash = Math.max(flash, 0.55); hcur++; }
+
+    // trails
+    g.globalCompositeOperation = 'source-over';
+    g.fillStyle = 'rgba(5,6,13,0.22)'; g.fillRect(0, 0, W, H);
+    g.globalCompositeOperation = 'lighter';
+
+    // stars
+    for (const s of stars) {
+      const a = (0.25 + 0.75 * Math.abs(Math.sin(et * 2 + s.ph))) * (0.4 + sHigh);
+      g.fillStyle = `hsla(${hueC + 40},70%,80%,${a})`;
+      g.beginPath(); g.arc(s.x, s.y, s.r, 0, 6.283); g.fill();
+    }
+
+    // aurora ribbons
+    for (let k = 0; k < 3; k++) {
+      const baseY = H * (0.66 + k * 0.1);
+      g.beginPath(); g.moveTo(0, baseY);
+      for (let x = 0; x <= W; x += 22) {
+        const y = baseY + Math.sin(x * 0.006 + et * (0.6 + k * 0.3) + k) * (26 + sMid * 170)
+          + Math.sin(x * 0.013 - et * 0.8) * 18;
+        g.lineTo(x, y);
+      }
+      g.lineTo(W, baseY + 240); g.lineTo(0, baseY + 240); g.closePath();
+      const grad = g.createLinearGradient(0, baseY - 120, 0, baseY + 240);
+      grad.addColorStop(0, `hsla(${hueC + k * 26},90%,62%,0)`);
+      grad.addColorStop(0.45, `hsla(${hueC + k * 26},92%,55%,${0.07 + sMid * 0.14})`);
+      grad.addColorStop(1, `hsla(${hueC + k * 26},90%,40%,0)`);
+      g.fillStyle = grad; g.fill();
+    }
+
+    // polar frequency bloom (mirrored petals)
+    const N = 90, r0 = 118 + sBass * 90;
+    g.lineCap = 'round';
+    for (let i = 0; i < N; i++) {
+      const v = freq[3 + i * 3] / 255;
+      const r1 = r0 + v * 250 * (0.5 + sMid * 1.4) + sBass * 40;
+      for (const dir of [1, -1]) {
+        const ang = dir * (i / N) * Math.PI + et * 0.3 - Math.PI / 2;
+        const ox = Math.cos(ang), oy = Math.sin(ang);
+        g.strokeStyle = `hsla(${hueC + v * 70},92%,${52 + v * 22}%,${0.35 + v * 0.5})`;
+        g.lineWidth = 2 + v * 5;
+        g.beginPath(); g.moveTo(cx + ox * r0, cy + oy * r0); g.lineTo(cx + ox * r1, cy + oy * r1); g.stroke();
+      }
+    }
+
+    // waveform ring
+    g.beginPath();
+    const RW = r0 - 26, step = analyser.fftSize / N;
+    for (let i = 0; i <= N; i++) {
+      const w = (wave[Math.floor(i * step) % analyser.fftSize] - 128) / 128;
+      const ang = (i / N) * 6.283 + et * 0.15;
+      const rr = RW + w * (36 + sMid * 70);
+      const x = cx + Math.cos(ang) * rr, y = cy + Math.sin(ang) * rr;
+      i ? g.lineTo(x, y) : g.moveTo(x, y);
+    }
+    g.closePath(); g.strokeStyle = `hsla(${hueC + 50},95%,75%,0.85)`; g.lineWidth = 2.2; g.stroke();
+
+    // core glow
+    const cg = g.createRadialGradient(cx, cy, 0, cx, cy, 160 + sBass * 120);
+    cg.addColorStop(0, `hsla(${hueC + 30},95%,70%,${0.3 + sBass * 0.5})`);
+    cg.addColorStop(1, `hsla(${hueC},90%,50%,0)`);
+    g.fillStyle = cg; g.beginPath(); g.arc(cx, cy, 160 + sBass * 120, 0, 6.283); g.fill();
+
+    // particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx; p.y += p.vy; p.vy += 0.06; p.vx *= 0.99; p.life -= 0.018;
+      if (p.life <= 0) { particles.splice(i, 1); continue; }
+      g.fillStyle = `hsla(${p.hue},90%,65%,${p.life})`;
+      g.beginPath(); g.arc(p.x, p.y, p.size * p.life + 0.5, 0, 6.283); g.fill();
+    }
+
+    // beat flash vignette
+    if (flash > 0.01) {
+      const fg = g.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.7);
+      fg.addColorStop(0, `hsla(${hueC + 40},90%,80%,${flash * 0.22})`);
+      fg.addColorStop(1, 'hsla(0,0%,100%,0)');
+      g.fillStyle = fg; g.fillRect(0, 0, W, H);
+      flash *= 0.86;
+    }
+    g.globalCompositeOperation = 'source-over';
+  }
+  requestAnimationFrame(frame);
+}
+```

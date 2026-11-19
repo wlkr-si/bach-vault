@@ -1,0 +1,66 @@
+{
+  "wallSeconds": {
+    "value": 1111.3804893749998,
+    "source": "tool-result"
+  },
+  "toolReportedDurationSeconds": {
+    "value": 1110.995,
+    "source": "tool-result"
+  },
+  "inputTokens": {
+    "value": 2,
+    "source": "tool-result"
+  },
+  "outputTokens": {
+    "value": 105920,
+    "source": "tool-result"
+  },
+  "reasoningTokens": {
+    "value": 85808,
+    "source": "tool-result"
+  },
+  "cachedReadTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "cachedWriteTokens": {
+    "value": 850,
+    "source": "tool-result"
+  },
+  "reportedCostUsd": {
+    "value": 4.2504159999999995,
+    "source": "tool-result"
+  },
+  "reportedModelId": {
+    "value": "claude-fable-5-2",
+    "source": "tool-result"
+  },
+  "requestedModelId": {
+    "value": "claude-fable-5-2",
+    "source": "tool-result"
+  },
+  "tool": {
+    "value": "claude",
+    "source": "tool-result"
+  },
+  "toolVersion": {
+    "value": "2.1.327 (Claude Code)",
+    "source": "tool-result"
+  },
+  "effort": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "effortSetting": {
+    "value": "high",
+    "source": "tool-result"
+  },
+  "cacheWrite5mTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "cacheWrite1hTokens": {
+    "value": 850,
+    "source": "tool-result"
+  }
+}

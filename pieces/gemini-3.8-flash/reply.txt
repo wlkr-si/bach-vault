@@ -1,0 +1,901 @@
+```javascript
+/**
+ * TOCCATA & CANON IN D MINOR: THE ARCHITECTURE OF INFINITY
+ * 
+ * An original 15-second polyphonic masterpiece for Bach Bench.
+ * Combines authentic Baroque counterpoint (Toccata, 3-Voice Fugue, Chromatic Stretto,
+ * and Picardy Third Apotheosis) with high-density procedural synthesis (Pipe Organ, 
+ * Flemish Cembalo, 32' Contra-Bourdon, Cathedral Impulse Reverb) and real-time
+ * 3D Gothic Cathedral sacred geometry visualization on a 1080 × 1350 canvas.
+ */
+
+export const title = "Toccata & Canon in D minor: The Architecture of Infinity";
+
+export function start({ audioContext, canvas, duration, random }) {
+  // Ensure portrait canvas dimensions
+  canvas.width = 1080;
+  canvas.height = 1350;
+  const ctx = canvas.getContext("2d");
+
+  // ============================================================================
+  // 1. MASTER AUDIO ARCHITECTURE & SYNTHESIS ENGINE
+  // ============================================================================
+  const startTime = audioContext.currentTime + 0.05;
+
+  // Master Dynamics & Output Bus
+  const masterCompressor = audioContext.createDynamicsCompressor();
+  masterCompressor.threshold.setValueAtTime(-14, startTime);
+  masterCompressor.knee.setValueAtTime(8, startTime);
+  masterCompressor.ratio.setValueAtTime(4.5, startTime);
+  masterCompressor.attack.setValueAtTime(0.003, startTime);
+  masterCompressor.release.setValueAtTime(0.12, startTime);
+
+  const masterGain = audioContext.createGain();
+  masterGain.gain.setValueAtTime(0.88, startTime);
+  // Gentle fade-out right at the 15.0s benchmark cut
+  masterGain.gain.setValueAtTime(0.88, startTime + 14.3);
+  masterGain.gain.exponentialRampToValueAtTime(0.001, startTime + 14.98);
+
+  const analyser = audioContext.createAnalyser();
+  analyser.fftSize = 512;
+  analyser.smoothingTimeConstant = 0.8;
+
+  masterGain.connect(masterCompressor);
+  masterCompressor.connect(analyser);
+  analyser.connect(audioContext.destination);
+
+  // Cathedral Convolver Reverb (Synthetic Impulse Response: Leipzig Thomaskirche model)
+  const irLength = Math.floor(audioContext.sampleRate * 2.8);
+  const irBuffer = audioContext.createBuffer(2, irLength, audioContext.sampleRate);
+  const irL = irBuffer.getChannelData(0);
+  const irR = irBuffer.getChannelData(1);
+  const earlyReflections = [
+    { t: 0.021, g: 0.65, p: -0.35 },
+    { t: 0.038, g: 0.55, p: 0.4 },
+    { t: 0.054, g: 0.45, p: -0.25 },
+    { t: 0.076, g: 0.38, p: 0.3 },
+    { t: 0.098, g: 0.30, p: -0.5 },
+    { t: 0.125, g: 0.25, p: 0.45 }
+  ];
+
+  for (let i = 0; i < irLength; i++) {
+    const t = i / audioContext.sampleRate;
+    const decay = Math.exp(-t * 2.1);
+    irL[i] = (random() * 2 - 1) * decay * 0.45;
+    irR[i] = (random() * 2 - 1) * decay * 0.45;
+  }
+  earlyReflections.forEach(tap => {
+    const idx = Math.floor(tap.t * audioContext.sampleRate);
+    if (idx < irLength) {
+      irL[idx] += tap.g * (1 - tap.p) * 0.5;
+      irR[idx] += tap.g * (1 + tap.p) * 0.5;
+    }
+  });
+
+  const reverbConvolver = audioContext.createConvolver();
+  reverbConvolver.buffer = irBuffer;
+  const reverbWetGain = audioContext.createGain();
+  reverbWetGain.gain.setValueAtTime(0.42, startTime);
+  reverbConvolver.connect(reverbWetGain);
+  reverbWetGain.connect(masterGain);
+
+  const dryGain = audioContext.createGain();
+  dryGain.gain.setValueAtTime(0.78, startTime);
+  dryGain.connect(masterGain);
+
+  // Noise Buffer for Organ Pipe Wind Transient ("Chiff")
+  const chiffLength = Math.floor(audioContext.sampleRate * 0.035);
+  const chiffBuffer = audioContext.createBuffer(1, chiffLength, audioContext.sampleRate);
+  const chiffData = chiffBuffer.getChannelData(0);
+  for (let i = 0; i < chiffLength; i++) {
+    chiffData[i] = (random() * 2 - 1) * Math.exp(-i / (chiffLength * 0.3));
+  }
+
+  // Instrument Voice Synthesizers
+  function midiToFreq(m) {
+    return 440 * Math.pow(2, (m - 69) / 12);
+  }
+
+  function playOrganNote(pitch, time, dur, vel = 0.8) {
+    const f0 = midiToFreq(pitch);
+    const noteGain = audioContext.createGain();
+    noteGain.gain.setValueAtTime(0.0001, time);
+    noteGain.gain.exponentialRampToValueAtTime(vel * 0.32, time + 0.02);
+    noteGain.gain.setValueAtTime(vel * 0.28, time + Math.max(0.03, dur - 0.08));
+    noteGain.gain.exponentialRampToValueAtTime(0.0001, time + dur + 0.08);
+
+    // Filter modeling pipe resonance
+    const filter = audioContext.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(Math.min(9500, f0 * 6.5), time);
+    filter.Q.setValueAtTime(1.8, time);
+
+    // Principal 8', Octave 4', Superoctave 2', Mixture 12th
+    const osc1 = audioContext.createOscillator();
+    osc1.type = "sawtooth";
+    osc1.frequency.setValueAtTime(f0, time);
+
+    const osc2 = audioContext.createOscillator();
+    osc2.type = "triangle";
+    osc2.frequency.setValueAtTime(f0 * 2, time);
+
+    const osc3 = audioContext.createOscillator();
+    osc3.type = "sine";
+    osc3.frequency.setValueAtTime(f0 * 3, time);
+
+    const osc2Gain = audioContext.createGain();
+    osc2Gain.gain.value = 0.45;
+    const osc3Gain = audioContext.createGain();
+    osc3Gain.gain.value = 0.22;
+
+    osc1.connect(filter);
+    osc2.connect(osc2Gain);
+    osc2Gain.connect(filter);
+    osc3.connect(osc3Gain);
+    osc3Gain.connect(filter);
+
+    // Chiff wind burst
+    const chiffNode = audioContext.createBufferSource();
+    chiffNode.buffer = chiffBuffer;
+    const chiffFilter = audioContext.createBiquadFilter();
+    chiffFilter.type = "bandpass";
+    chiffFilter.frequency.setValueAtTime(Math.min(6000, f0 * 3.2), time);
+    chiffFilter.Q.setValueAtTime(3.0, time);
+    const chiffGain = audioContext.createGain();
+    chiffGain.gain.setValueAtTime(vel * 0.18, time);
+    chiffGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.035);
+    chiffNode.connect(chiffFilter);
+    chiffFilter.connect(chiffGain);
+    chiffGain.connect(filter);
+
+    filter.connect(noteGain);
+    noteGain.connect(dryGain);
+    noteGain.connect(reverbConvolver);
+
+    osc1.start(time);
+    osc2.start(time);
+    osc3.start(time);
+    chiffNode.start(time);
+
+    const stopTime = time + dur + 0.1;
+    osc1.stop(stopTime);
+    osc2.stop(stopTime);
+    osc3.stop(stopTime);
+    chiffNode.stop(time + 0.04);
+  }
+
+  function playCembaloNote(pitch, time, dur, vel = 0.7) {
+    const f0 = midiToFreq(pitch);
+    const noteGain = audioContext.createGain();
+    noteGain.gain.setValueAtTime(0.0001, time);
+    noteGain.gain.exponentialRampToValueAtTime(vel * 0.45, time + 0.003);
+    noteGain.gain.exponentialRampToValueAtTime(vel * 0.08, time + 0.16);
+    noteGain.gain.exponentialRampToValueAtTime(0.0001, time + Math.max(0.18, dur));
+
+    const bandpass = audioContext.createBiquadFilter();
+    bandpass.type = "bandpass";
+    bandpass.frequency.setValueAtTime(Math.min(8000, f0 * 2.4), time);
+    bandpass.Q.setValueAtTime(2.2, time);
+
+    const oscA = audioContext.createOscillator();
+    oscA.type = "sawtooth";
+    oscA.frequency.setValueAtTime(f0, time);
+
+    const oscB = audioContext.createOscillator();
+    oscB.type = "sawtooth";
+    oscB.frequency.setValueAtTime(f0 * 1.002, time); // Subtle harpsichord double-string detune
+
+    oscA.connect(bandpass);
+    oscB.connect(bandpass);
+    bandpass.connect(noteGain);
+
+    noteGain.connect(dryGain);
+    noteGain.connect(reverbConvolver);
+
+    oscA.start(time);
+    oscB.start(time);
+    const stopTime = time + Math.max(0.2, dur);
+    oscA.stop(stopTime);
+    oscB.stop(stopTime);
+  }
+
+  function playPedalNote(pitch, time, dur, vel = 1.0) {
+    const f0 = midiToFreq(pitch);
+    const noteGain = audioContext.createGain();
+    noteGain.gain.setValueAtTime(0.0001, time);
+    noteGain.gain.exponentialRampToValueAtTime(vel * 0.55, time + 0.05);
+    noteGain.gain.setValueAtTime(vel * 0.48, time + Math.max(0.06, dur - 0.1));
+    noteGain.gain.exponentialRampToValueAtTime(0.0001, time + dur + 0.15);
+
+    // Fundamental + 32' Sub-bass + Harmonic saturation
+    const oscSub = audioContext.createOscillator();
+    oscSub.type = "sine";
+    oscSub.frequency.setValueAtTime(f0 * 0.5, time); // 32-foot pipe subterranean vibration
+
+    const oscFund = audioContext.createOscillator();
+    oscFund.type = "triangle";
+    oscFund.frequency.setValueAtTime(f0, time);
+
+    const oscOct = audioContext.createOscillator();
+    oscOct.type = "sine";
+    oscOct.frequency.setValueAtTime(f0 * 2, time);
+
+    const subGain = audioContext.createGain();
+    subGain.gain.value = 0.65;
+    const octGain = audioContext.createGain();
+    octGain.gain.value = 0.3;
+
+    oscSub.connect(subGain);
+    subGain.connect(noteGain);
+    oscFund.connect(noteGain);
+    oscOct.connect(octGain);
+    octGain.connect(noteGain);
+
+    noteGain.connect(dryGain);
+    noteGain.connect(reverbConvolver);
+
+    oscSub.start(time);
+    oscFund.start(time);
+    oscOct.start(time);
+    const stopTime = time + dur + 0.2;
+    oscSub.stop(stopTime);
+    oscFund.stop(stopTime);
+    oscOct.stop(stopTime);
+  }
+
+  function playCelestialChime(pitch, time, dur, vel = 0.5) {
+    const f0 = midiToFreq(pitch);
+    const noteGain = audioContext.createGain();
+    noteGain.gain.setValueAtTime(0.0001, time);
+    noteGain.gain.exponentialRampToValueAtTime(vel * 0.22, time + 0.005);
+    noteGain.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+
+    const osc = audioContext.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(f0, time);
+
+    const oscOvertone = audioContext.createOscillator();
+    oscOvertone.type = "sine";
+    oscOvertone.frequency.setValueAtTime(f0 * 2.76, time); // Inharmonic bell partial
+    const otGain = audioContext.createGain();
+    otGain.gain.value = 0.25;
+
+    osc.connect(noteGain);
+    oscOvertone.connect(otGain);
+    otGain.connect(noteGain);
+
+    noteGain.connect(reverbConvolver);
+    osc.start(time);
+    oscOvertone.start(time);
+    osc.stop(time + dur);
+    oscOvertone.stop(time + dur);
+  }
+
+  // ============================================================================
+  // 2. THE COMPOSITION: FULL SCORE ARCHITECTURE (15 SECONDS)
+  // ============================================================================
+  // Voices: 0 = Soprano (Gold), 1 = Alto (Cyan), 2 = Tenor (Magenta), 3 = Bass (Emerald)
+  const score = [];
+
+  function addNote(v, inst, pitch, relT, dur, vel = 0.8) {
+    score.push({ v, inst, pitch, t: relT, d: dur, vel });
+  }
+
+  // --- ACT I: THE GREAT INVOCATION (0.00 - 3.40s) ---
+  // Monumental pedal strike & D minor opening chord
+  addNote(3, "pedal", 38, 0.00, 2.6, 1.0); // D2
+  addNote(3, "pedal", 26, 0.00, 2.6, 0.95); // D1 (36.7Hz contra-bourdon)
+  addNote(2, "organ", 62, 0.00, 1.1, 0.85); // D4
+  addNote(1, "organ", 65, 0.00, 1.1, 0.85); // F4
+  addNote(0, "organ", 69, 0.00, 1.1, 0.9); // A4
+  addNote(0, "organ", 74, 0.00, 1.1, 0.95); // D5
+
+  // Virtuosic 32nd-note Toccata Flourish
+  const toccata1 = [69, 74, 76, 77, 81, 86, 85, 86, 81, 77, 74, 73, 74, 76, 77, 79, 81, 85, 86];
+  toccata1.forEach((p, idx) => {
+    const t = 0.22 + idx * 0.062;
+    addNote(0, "cembalo", p, t, 0.12, 0.85);
+    addNote(0, "organ", p, t, 0.08, 0.7);
+  });
+
+  // Dominant Pause on A7 / Diminished Suspensions
+  addNote(3, "pedal", 33, 1.48, 1.25, 0.95); // A1
+  addNote(2, "organ", 61, 1.48, 0.9, 0.85); // C#4
+  addNote(1, "organ", 67, 1.48, 0.9, 0.85); // G4
+  addNote(0, "organ", 73, 1.48, 0.9, 0.9); // C#5
+  addNote(0, "organ", 76, 1.48, 0.9, 0.9); // E5
+  addNote(0, "organ", 82, 1.48, 0.9, 0.95); // Bb5
+
+  // Answering Descending Cascade
+  const toccata2 = [82, 81, 79, 77, 76, 74, 73, 74, 76, 73, 69, 67, 65, 64, 62, 61];
+  toccata2.forEach((p, idx) => {
+    const t = 1.95 + idx * 0.065;
+    addNote(1, "cembalo", p, t, 0.12, 0.8);
+    addNote(0, "organ", p, t, 0.08, 0.75);
+  });
+
+  // Cadential Arrival on D Minor Anchor
+  addNote(3, "pedal", 38, 3.05, 0.45, 0.85);
+  addNote(2, "organ", 62, 3.05, 0.45, 0.8);
+  addNote(1, "organ", 65, 3.05, 0.45, 0.8);
+  addNote(0, "organ", 74, 3.05, 0.45, 0.85);
+
+  // --- ACT II: THE TRIPLE CANON / FUGATO (3.42 - 7.00s) ---
+  // Tempo: 142 BPM (1 16th = 0.1056s)
+  // Continuo Walking Bass (Voice 3)
+  const bassLine = [
+    { p: 38, t: 3.42 }, { p: 50, t: 3.63 }, { p: 49, t: 3.84 }, { p: 50, t: 4.05 },
+    { p: 41, t: 4.26 }, { p: 43, t: 4.47 }, { p: 45, t: 4.68 }, { p: 33, t: 4.89 },
+    { p: 38, t: 5.10 }, { p: 40, t: 5.31 }, { p: 41, t: 5.52 }, { p: 43, t: 5.73 },
+    { p: 45, t: 5.94 }, { p: 46, t: 6.15 }, { p: 43, t: 6.36 }, { p: 45, t: 6.57 },
+    { p: 33, t: 6.78 }
+  ];
+  bassLine.forEach(b => {
+    addNote(3, "pedal", b.p, b.t, 0.24, 0.88);
+    addNote(3, "cembalo", b.p + 12, b.t, 0.18, 0.7);
+  });
+
+  // Voice 0: Fugue Subject in D minor (Harpsichord + Bright Organ)
+  const fugueSubject1 = [
+    62, 69, 65, 62, 61, 62, 64, 65, 67, 65, 64, 62, 61, 64, 69, 67,
+    65, 64, 62, 60, 58, 57, 55, 58, 57, 61, 62, 64, 65, 67, 69, 73, 74
+  ];
+  fugueSubject1.forEach((p, idx) => {
+    const t = 3.42 + idx * 0.1056;
+    addNote(0, "cembalo", p, t, 0.14, 0.82);
+    addNote(0, "organ", p, t, 0.11, 0.74);
+  });
+
+  // Voice 1: Canon Answer at the 5th (A minor) entering at 4.68s
+  const fugueSubject2 = [
+    69, 76, 72, 69, 68, 69, 71, 72, 74, 72, 71, 69, 68, 71, 76, 74,
+    72, 71, 69, 67, 65, 64
+  ];
+  fugueSubject2.forEach((p, idx) => {
+    const t = 4.68 + idx * 0.1056;
+    addNote(1, "cembalo", p, t, 0.14, 0.8);
+    addNote(1, "organ", p, t, 0.11, 0.75);
+  });
+
+  // Voice 2: Inverted Counter-Subject / Suspension Hocket
+  const counterSubject = [
+    57, 61, 64, 65, 64, 62, 61, 64, 65, 67, 69, 70, 69, 67, 65, 64
+  ];
+  counterSubject.forEach((p, idx) => {
+    const t = 5.31 + idx * 0.1056;
+    addNote(2, "organ", p, t, 0.12, 0.75);
+    addNote(2, "cembalo", p + 12, t, 0.12, 0.65);
+  });
+
+  // --- ACT III: CIRCLE OF FIFTHS MODULATION & CHROMATIC STRETTO (7.00 - 10.50s) ---
+  // Fast baroque harmonic progression: Gm -> C7 -> F -> Bb -> Edim7 -> A7sus4/A7
+  const circleChords = [
+    { t: 7.00, bass: 43, notes: [55, 58, 67, 70], name: "Gm" },
+    { t: 7.42, bass: 36, notes: [55, 58, 60, 64, 67, 72], name: "C7" },
+    { t: 7.84, bass: 41, notes: [53, 57, 65, 69, 72], name: "F" },
+    { t: 8.26, bass: 34, notes: [53, 58, 62, 65, 70], name: "Bb" },
+    { t: 8.68, bass: 40, notes: [52, 55, 58, 61, 67], name: "Edim7" },
+    { t: 9.10, bass: 33, notes: [52, 57, 61, 64, 67, 69, 73], name: "A7" }
+  ];
+
+  circleChords.forEach(ch => {
+    addNote(3, "pedal", ch.bass, ch.t, 0.44, 0.9);
+    ch.notes.forEach(p => {
+      addNote(2, "organ", p, ch.t, 0.38, 0.7);
+    });
+    // Virtuosic broken-chord arpeggios
+    const arp = [...ch.notes, ch.notes[ch.notes.length - 2], ch.notes[ch.notes.length - 1]];
+    arp.forEach((p, i) => {
+      addNote(0, "cembalo", p + 12, ch.t + i * 0.052, 0.09, 0.82);
+    });
+  });
+
+  // 9.52 - 10.50s: Presto Stretto (Voice 0 chromatic ascent, Voice 3 contrary descent)
+  const strettoUp = [74, 76, 77, 79, 81, 82, 85, 86, 88, 89];
+  const strettoDown = [62, 61, 58, 57, 55, 53, 52, 49, 45, 41];
+  strettoUp.forEach((p, i) => {
+    const t = 9.52 + i * 0.088;
+    addNote(0, "organ", p, t, 0.12, 0.9);
+    addNote(0, "cembalo", p, t, 0.12, 0.9);
+  });
+  strettoDown.forEach((p, i) => {
+    const t = 9.52 + i * 0.088;
+    addNote(3, "pedal", p, t, 0.14, 0.92);
+  });
+
+  // --- ACT IV: APOTHEOSIS & PICARDY SUNBURST (10.50 - 15.00s) ---
+  // Cadential 6/4 Climax on Dominant Pedal A
+  addNote(3, "pedal", 33, 10.45, 2.1, 1.0); // A1 roaring pedal
+  addNote(3, "pedal", 45, 10.45, 2.1, 0.9); // A2
+  // Dm 6/4 -> G#dim7 -> A7
+  [62, 65, 69, 74].forEach(p => addNote(2, "organ", p, 10.45, 0.52, 0.85));
+  [62, 65, 68, 71, 74].forEach(p => addNote(1, "organ", p, 10.97, 0.52, 0.88));
+  [61, 64, 67, 69, 73, 76].forEach(p => addNote(0, "organ", p, 11.49, 0.58, 0.92));
+
+  // Screaming 32nd-note Cadenza descent into cadence
+  const cadenza = [79, 77, 76, 74, 73, 71, 70, 69, 67, 65, 64, 62, 61];
+  cadenza.forEach((p, i) => {
+    const t = 12.07 + i * 0.048;
+    addNote(0, "cembalo", p, t, 0.09, 0.88);
+    addNote(0, "organ", p, t, 0.08, 0.8);
+  });
+
+  // 12.70s: RESOLUTION TO PICARDY THIRD (D MAJOR APOTHEOSIS)
+  // Colossal D1 + D2 bass shockwave
+  addNote(3, "pedal", 26, 12.70, 2.25, 1.0); // D1 (36.7Hz)
+  addNote(3, "pedal", 38, 12.70, 2.25, 1.0); // D2
+  addNote(3, "pedal", 50, 12.70, 2.25, 0.85); // D3
+
+  // Grand Organ Plenum: D - F# - A (Glorious Picardy Major Chord)
+  const picardyChord = [50, 57, 62, 66, 69, 74, 78, 81];
+  picardyChord.forEach(p => {
+    addNote(1, "organ", p, 12.70, 2.22, 0.95);
+  });
+
+  // Celestial Harpsichord & Starlight Chimes arpeggiating up into the infinite vault
+  const celestialArp = [62, 66, 69, 74, 78, 81, 86, 90, 93, 98];
+  celestialArp.forEach((p, i) => {
+    const t = 12.78 + i * 0.075;
+    addNote(0, "cembalo", p, t, 0.28, 0.85);
+    addNote(0, "celestial", p, t, 1.6, 0.7);
+  });
+
+  // Dispatch all scheduled note events into Web Audio native timeline
+  score.forEach(n => {
+    const t = startTime + n.t;
+    if (n.inst === "organ") playOrganNote(n.pitch, t, n.d, n.vel);
+    else if (n.inst === "cembalo") playCembaloNote(n.pitch, t, n.d, n.vel);
+    else if (n.inst === "pedal") playPedalNote(n.pitch, t, n.d, n.vel);
+    else if (n.inst === "celestial") playCelestialChime(n.pitch, t, n.d, n.vel);
+  });
+
+  // ============================================================================
+  // 3. REAL-TIME 3D GOTHIC SYNTHESIS VISUAL ENGINE
+  // ============================================================================
+  const W = 1080;
+  const H = 1350;
+  const cx = W / 2;
+  const cy = H * 0.44;
+
+  // Analyser frequency array for live audio reactivity
+  const freqData = new Uint8Array(analyser.frequencyBinCount);
+
+  // 3D Perspective Projection Matrix
+  function project(x, y, z) {
+    const fl = 720;
+    const scale = fl / Math.max(1, fl + z);
+    return {
+      x: cx + x * scale,
+      y: cy + y * scale,
+      scale
+    };
+  }
+
+  // Circle of Fifths Layout for the Rose Window
+  // 12 nodes arranged clockwise starting from D at the top apex (Circle of Fifths progression)
+  const circleOfFifthsPitches = [2, 9, 4, 11, 6, 1, 8, 3, 10, 5, 0, 7]; // D, A, E, B, F#, C#, G#, D#, Bb, F, C, G
+  const pitchNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "Bb", "B"];
+
+  // Floating Cathedral Incense & Light Particles
+  const PARTICLE_COUNT = 140;
+  const particles = [];
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    particles.push({
+      x: (random() * 2 - 1) * 800,
+      y: (random() * 2 - 1) * 750 + 100,
+      z: random() * 1600 + 50,
+      vz: random() * 25 + 15,
+      size: random() * 3.5 + 1.2,
+      phase: random() * Math.PI * 2,
+      voice: Math.floor(random() * 4)
+    });
+  }
+
+  // Voice ribbon trail buffers for 3D counterpoint streamers
+  const voiceColors = [
+    { main: "#ffd54f", glow: "#ffecb3", rgb: [255, 213, 79] },  // Soprano: Radiant Gold
+    { main: "#00e5ff", glow: "#80d8ff", rgb: [0, 229, 255] },   // Alto: Electric Cyan
+    { main: "#ff2a85", glow: "#f48fb1", rgb: [255, 42, 133] },  // Tenor: Imperial Rose
+    { main: "#00f5a0", glow: "#b9f6ca", rgb: [0, 245, 160] }    // Bass: Celestial Emerald
+  ];
+
+  const voiceTrails = [[], [], [], []];
+  const TRAIL_LENGTH = 32;
+
+  // Animation frame loop
+  let animId;
+  function render() {
+    animId = requestAnimationFrame(render);
+
+    const now = audioContext.currentTime;
+    const elapsed = Math.max(0, now - startTime);
+    const progress = Math.min(1, elapsed / duration);
+
+    analyser.getByteFrequencyData(freqData);
+
+    // Audio energy metrics
+    let bassEnergy = 0;
+    for (let i = 0; i < 12; i++) bassEnergy += freqData[i];
+    bassEnergy = (bassEnergy / 12) / 255;
+
+    let trebleEnergy = 0;
+    for (let i = 60; i < 140; i++) trebleEnergy += freqData[i];
+    trebleEnergy = (trebleEnergy / 80) / 255;
+
+    // Active score notes at current audio time
+    const activeNotes = score.filter(n => elapsed >= n.t && elapsed < n.t + n.d);
+    const activePitchClasses = new Set(activeNotes.map(n => n.pitch % 12));
+
+    // Camera push-in towards the Rose Window
+    const camZ = -520 + progress * 420;
+    const shake = bassEnergy * (elapsed > 12.6 ? 12 : 5);
+    const shakeX = (random() * 2 - 1) * shake;
+    const shakeY = (random() * 2 - 1) * shake;
+
+    // Picardy state detection (D Major resolution)
+    const isPicardy = elapsed >= 12.68;
+
+    // --- A. BACKGROUND & SACRED CATHEDRAL VAULT ---
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
+
+    // Deep cathedral atmospheric gradient
+    const bgGrad = ctx.createRadialGradient(cx, cy, 60, cx, cy, H * 0.85);
+    if (isPicardy) {
+      bgGrad.addColorStop(0, "#2c1d04");
+      bgGrad.addColorStop(0.35, "#150b1c");
+      bgGrad.addColorStop(1, "#040207");
+    } else {
+      bgGrad.addColorStop(0, "#0e0817");
+      bgGrad.addColorStop(0.45, "#07040d");
+      bgGrad.addColorStop(1, "#020105");
+    }
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // --- B. VOLUMETRIC CREPUSCULAR GOD RAYS ---
+    const rayCount = 16;
+    const rayAngleOffset = elapsed * 0.12;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < rayCount; i++) {
+      const theta = (i / rayCount) * Math.PI * 2 + rayAngleOffset;
+      const rayAlpha = (0.04 + bassEnergy * 0.08 + (isPicardy ? 0.14 : 0)) * (0.6 + 0.4 * Math.sin(elapsed * 3 + i));
+      const rayGrad = ctx.createRadialGradient(cx, cy, 20, cx, cy, H * 0.7);
+      if (isPicardy) {
+        rayGrad.addColorStop(0, `rgba(255, 235, 170, ${rayAlpha * 1.5})`);
+        rayGrad.addColorStop(0.4, `rgba(255, 190, 70, ${rayAlpha * 0.6})`);
+        rayGrad.addColorStop(1, "rgba(255, 170, 50, 0)");
+      } else {
+        rayGrad.addColorStop(0, `rgba(180, 190, 255, ${rayAlpha * 1.2})`);
+        rayGrad.addColorStop(0.4, `rgba(140, 70, 240, ${rayAlpha * 0.5})`);
+        rayGrad.addColorStop(1, "rgba(50, 10, 100, 0)");
+      }
+      ctx.fillStyle = rayGrad;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      const beamSpread = 0.18 + bassEnergy * 0.1;
+      ctx.arc(cx, cy, H * 0.85, theta - beamSpread, theta + beamSpread);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // --- C. 3D GOTHIC POINTED ARCHES (NAVE VAULTING) ---
+    const ARCH_COUNT = 9;
+    const naveWidth = 560;
+    const naveHeight = 650;
+    for (let i = ARCH_COUNT - 1; i >= 0; i--) {
+      const archZ = (i * 210 - (elapsed * 90) % 210) + 120 - camZ;
+      if (archZ <= 10) continue;
+
+      const pLeft = project(-naveWidth, naveHeight, archZ);
+      const pRight = project(naveWidth, naveHeight, archZ);
+      const pApex = project(0, -naveHeight * 0.88, archZ);
+      const pSpringL = project(-naveWidth, -naveHeight * 0.15, archZ);
+      const pSpringR = project(naveWidth, -naveHeight * 0.15, archZ);
+
+      const archAlpha = Math.max(0, Math.min(1, 1.4 - (archZ / 1700))) * (0.35 + bassEnergy * 0.45);
+      const strokeColor = isPicardy ? `rgba(255, 220, 130, ${archAlpha})` : `rgba(140, 160, 255, ${archAlpha})`;
+
+      ctx.lineWidth = Math.max(1, pLeft.scale * 3.5);
+      ctx.strokeStyle = strokeColor;
+
+      // Draw Ogival Pointed Gothic Arch
+      ctx.beginPath();
+      ctx.moveTo(pLeft.x, pLeft.y);
+      ctx.lineTo(pSpringL.x, pSpringL.y);
+      // Left gothic arc up to apex
+      ctx.quadraticCurveTo(pSpringL.x + (pApex.x - pSpringL.x) * 0.25, pApex.y + 40, pApex.x, pApex.y);
+      // Right gothic arc down from apex
+      ctx.quadraticCurveTo(pSpringR.x - (pSpringR.x - pApex.x) * 0.25, pApex.y + 40, pSpringR.x, pSpringR.y);
+      ctx.lineTo(pRight.x, pRight.y);
+      ctx.stroke();
+
+      // Tierceron rib vault ceiling diagonals
+      if (i < ARCH_COUNT - 1) {
+        const nextZ = archZ + 210;
+        const pNextApex = project(0, -naveHeight * 0.88, nextZ);
+        ctx.strokeStyle = isPicardy ? `rgba(255, 200, 100, ${archAlpha * 0.35})` : `rgba(160, 120, 240, ${archAlpha * 0.3})`;
+        ctx.lineWidth = Math.max(0.7, pLeft.scale * 1.5);
+        ctx.beginPath();
+        ctx.moveTo(pApex.x, pApex.y);
+        ctx.lineTo(pNextApex.x, pNextApex.y);
+        ctx.moveTo(pSpringL.x, pSpringL.y);
+        ctx.lineTo(pNextApex.x, pNextApex.y);
+        ctx.moveTo(pSpringR.x, pSpringR.y);
+        ctx.lineTo(pNextApex.x, pNextApex.y);
+        ctx.stroke();
+      }
+    }
+
+    // --- D. THE GREAT ROSE WINDOW (SACRED GEOMETRIC MANDALA) ---
+    const roseZ = 1200 - camZ;
+    const roseProj = project(0, -60, roseZ);
+    const roseRadius = 260 * roseProj.scale;
+
+    ctx.save();
+    ctx.translate(roseProj.x, roseProj.y);
+
+    // Glowing halo behind Rose Window
+    const haloGrad = ctx.createRadialGradient(0, 0, roseRadius * 0.1, 0, 0, roseRadius * 1.35);
+    if (isPicardy) {
+      haloGrad.addColorStop(0, "rgba(255, 245, 180, 0.95)");
+      haloGrad.addColorStop(0.3, "rgba(255, 180, 50, 0.45)");
+      haloGrad.addColorStop(1, "rgba(255, 140, 20, 0)");
+    } else {
+      haloGrad.addColorStop(0, "rgba(180, 160, 255, 0.7)");
+      haloGrad.addColorStop(0.35, "rgba(100, 50, 200, 0.3)");
+      haloGrad.addColorStop(1, "rgba(40, 10, 80, 0)");
+    }
+    ctx.fillStyle = haloGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, roseRadius * 1.35, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Outer Tracery Rings
+    ctx.strokeStyle = isPicardy ? "#ffd54f" : "#9c88ff";
+    ctx.lineWidth = Math.max(1.5, 3 * roseProj.scale);
+    ctx.beginPath();
+    ctx.arc(0, 0, roseRadius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.lineWidth = Math.max(1, 1.8 * roseProj.scale);
+    ctx.beginPath();
+    ctx.arc(0, 0, roseRadius * 0.78, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 12 Outer Petal Medallions (Circle of Fifths Nodes)
+    const nodeCoords = [];
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2 - Math.PI / 2;
+      const nx = Math.cos(angle) * (roseRadius * 0.88);
+      const ny = Math.sin(angle) * (roseRadius * 0.88);
+      const pitchClass = circleOfFifthsPitches[i];
+      const isActive = activePitchClasses.has(pitchClass);
+      nodeCoords.push({ x: nx, y: ny, angle, pitchClass, isActive });
+
+      // Medallion Foil
+      ctx.beginPath();
+      ctx.arc(nx, ny, roseRadius * 0.088, 0, Math.PI * 2);
+      if (isActive) {
+        ctx.fillStyle = isPicardy ? "#ffffff" : "#ffeb3b";
+        ctx.shadowColor = isPicardy ? "#ffc107" : "#00e5ff";
+        ctx.shadowBlur = 18;
+      } else {
+        ctx.fillStyle = "rgba(25, 15, 45, 0.85)";
+        ctx.shadowBlur = 0;
+      }
+      ctx.fill();
+      ctx.stroke();
+
+      // Pitch Class Notation Glyph inside active medallions
+      if (isActive || roseProj.scale > 0.8) {
+        ctx.fillStyle = isActive ? "#000000" : "rgba(200, 200, 255, 0.6)";
+        ctx.font = `600 ${Math.max(9, Math.floor(13 * roseProj.scale))}px serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(pitchNames[pitchClass], nx, ny);
+      }
+    }
+    ctx.shadowBlur = 0;
+
+    // Harmonic Chord Connection Lines between active notes
+    ctx.lineWidth = Math.max(1.2, 2.5 * roseProj.scale);
+    for (let i = 0; i < nodeCoords.length; i++) {
+      if (!nodeCoords[i].isActive) continue;
+      for (let j = i + 1; j < nodeCoords.length; j++) {
+        if (!nodeCoords[j].isActive) continue;
+        ctx.strokeStyle = isPicardy ? "rgba(255, 235, 140, 0.85)" : "rgba(0, 229, 255, 0.75)";
+        ctx.beginPath();
+        ctx.moveTo(nodeCoords[i].x, nodeCoords[i].y);
+        ctx.quadraticCurveTo(0, 0, nodeCoords[j].x, nodeCoords[j].y);
+        ctx.stroke();
+      }
+    }
+
+    // Inner Gothic Rosette (Six-Fold and Twelve-Fold Counter-Rotating Filigree)
+    const innerSpin = elapsed * 0.25;
+    ctx.lineWidth = Math.max(1, 1.6 * roseProj.scale);
+    ctx.strokeStyle = isPicardy ? "rgba(255, 215, 80, 0.8)" : "rgba(160, 130, 255, 0.65)";
+    for (let f = 0; f < 6; f++) {
+      const a = (f / 6) * Math.PI * 2 + innerSpin;
+      const fx = Math.cos(a) * (roseRadius * 0.42);
+      const fy = Math.sin(a) * (roseRadius * 0.42);
+      ctx.beginPath();
+      ctx.arc(fx, fy, roseRadius * 0.24, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    for (let f = 0; f < 12; f++) {
+      const a = (f / 12) * Math.PI * 2 - innerSpin * 1.5;
+      const fx = Math.cos(a) * (roseRadius * 0.22);
+      const fy = Math.sin(a) * (roseRadius * 0.22);
+      ctx.beginPath();
+      ctx.arc(fx, fy, roseRadius * 0.1, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // --- E. 3D POLYPHONIC COUNTERPOINT STREAMERS (VOICE RIBBONS) ---
+    // Record current pitch per voice for kinetic 3D streamers
+    for (let v = 0; v < 4; v++) {
+      const vNotes = activeNotes.filter(n => n.v === v);
+      let targetY = 120;
+      let targetX = (v - 1.5) * 180;
+      if (vNotes.length > 0) {
+        const avgPitch = vNotes.reduce((acc, cur) => acc + cur.pitch, 0) / vNotes.length;
+        targetY = -((avgPitch - 60) * 14) + (v === 3 ? 240 : 0);
+      }
+      voiceTrails[v].unshift({
+        x: targetX,
+        y: targetY,
+        time: elapsed,
+        hasNote: vNotes.length > 0
+      });
+      if (voiceTrails[v].length > TRAIL_LENGTH) voiceTrails[v].pop();
+
+      // Render ribbon connecting points from rose window out into the nave
+      if (voiceTrails[v].length > 2) {
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.beginPath();
+        let started = false;
+        for (let t = 0; t < voiceTrails[v].length; t++) {
+          const pt = voiceTrails[v][t];
+          const ptZ = (t * 42) + 150 - camZ;
+          if (ptZ < 10) continue;
+          const pr = project(pt.x, pt.y, ptZ);
+          if (!started) {
+            ctx.moveTo(pr.x, pr.y);
+            started = true;
+          } else {
+            ctx.lineTo(pr.x, pr.y);
+          }
+        }
+        const vCol = voiceColors[v];
+        const alpha = (0.35 + bassEnergy * 0.4) * (vNotes.length > 0 ? 1.0 : 0.4);
+        ctx.strokeStyle = `rgba(${vCol.rgb[0]}, ${vCol.rgb[1]}, ${vCol.rgb[2]}, ${alpha})`;
+        ctx.lineWidth = Math.max(1.8, 5.5 * (1 - v / 4));
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // --- F. FLOATING INCENSE MOTES & SOUND PARTICLES ---
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    particles.forEach(p => {
+      p.z -= p.vz * (1 + bassEnergy * 1.5);
+      if (p.z < 20) p.z += 1600;
+      const pr = project(p.x, p.y + Math.sin(elapsed * 2 + p.phase) * 35, p.z - camZ);
+      if (pr.scale > 0) {
+        const pSize = p.size * pr.scale * (1 + trebleEnergy * 2);
+        const col = voiceColors[p.voice];
+        const pAlpha = Math.min(1, pr.scale * 1.5) * (0.3 + bassEnergy * 0.6);
+        ctx.fillStyle = `rgba(${col.rgb[0]}, ${col.rgb[1]}, ${col.rgb[2]}, ${pAlpha})`;
+        ctx.beginPath();
+        ctx.arc(pr.x, pr.y, Math.max(0.6, pSize), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+    ctx.restore();
+
+    // --- G. REFINED BAROQUE FRAME & TYPOGRAPHY OVERLAY ---
+    ctx.restore(); // Restore shake
+
+    // Perimeter Filigree Baroque Border
+    ctx.lineWidth = 2.0;
+    ctx.strokeStyle = isPicardy ? "rgba(255, 215, 80, 0.75)" : "rgba(180, 160, 240, 0.45)";
+    ctx.strokeRect(36, 36, W - 72, H - 72);
+    ctx.lineWidth = 1.0;
+    ctx.strokeRect(46, 46, W - 92, H - 92);
+
+    // Corner flourishes
+    const cornerSize = 28;
+    const corners = [
+      [36, 36], [W - 36, 36], [36, H - 36], [W - 36, H - 36]
+    ];
+    corners.forEach(([cx, cy], idx) => {
+      const sx = idx % 2 === 0 ? 1 : -1;
+      const sy = idx < 2 === true ? 1 : -1;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + sy * cornerSize);
+      ctx.lineTo(cx, cy);
+      ctx.lineTo(cx + sx * cornerSize, cy);
+      ctx.stroke();
+    });
+
+    // Monumental Baroque Header Typography
+    ctx.textAlign = "center";
+    ctx.fillStyle = isPicardy ? "#ffd54f" : "#f1e9ff";
+    ctx.font = "600 24px Georgia, serif";
+    ctx.letterSpacing = "6px";
+    ctx.fillText("JOHANN SEBASTIAN BACH", W / 2, 88);
+
+    ctx.fillStyle = isPicardy ? "#ffffff" : "rgba(220, 210, 255, 0.75)";
+    ctx.font = "italic 300 17px Georgia, serif";
+    ctx.letterSpacing = "4px";
+    ctx.fillText("TOCCATA & CANON À 4 VOIX · BWV ∞", W / 2, 116);
+
+    // Dynamic Harmonic State Badge
+    let harmonicStatus = "D MINOR : TOCCATA INVOCATION";
+    if (elapsed >= 3.42 && elapsed < 7.00) harmonicStatus = "TRIPLE FUGUE IN CONTRAPUNCTO";
+    else if (elapsed >= 7.00 && elapsed < 10.45) harmonicStatus = "STRETTO & CIRCLE OF FIFTHS";
+    else if (elapsed >= 10.45 && elapsed < 12.68) harmonicStatus = "CADENTIAL DOMINANT SWELL (A7)";
+    else if (elapsed >= 12.68) harmonicStatus = "THE PICARDY THIRD : D MAJOR APOTHEOSIS";
+
+    ctx.fillStyle = isPicardy ? "#ffd54f" : "#80d8ff";
+    ctx.font = "600 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    ctx.letterSpacing = "3px";
+    ctx.fillText(harmonicStatus, W / 2, 146);
+
+    // Voice Activity Matrix HUD (Bottom Left)
+    const voiceNames = ["SOPRANO", "ALTO", "TENOR", "BASS"];
+    const hudY = H - 95;
+    for (let v = 0; v < 4; v++) {
+      const vx = 80 + v * 130;
+      const vActive = activeNotes.some(n => n.v === v);
+      const col = voiceColors[v];
+
+      ctx.fillStyle = vActive ? col.main : "rgba(100, 90, 130, 0.4)";
+      ctx.beginPath();
+      ctx.arc(vx - 14, hudY, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.font = "600 11px -apple-system, BlinkMacSystemFont, sans-serif";
+      ctx.textAlign = "left";
+      ctx.letterSpacing = "1.5px";
+      ctx.fillText(voiceNames[v], vx - 4, hudY + 4);
+    }
+
+    // Benchmark Time & Polyphonic Density HUD (Bottom Right)
+    ctx.textAlign = "right";
+    ctx.fillStyle = isPicardy ? "#ffd54f" : "rgba(210, 200, 250, 0.85)";
+    ctx.font = "600 13px Georgia, serif";
+    ctx.letterSpacing = "2px";
+    ctx.fillText(`${elapsed.toFixed(2)}s / 15.00s · 4 VOICES`, W - 80, hudY + 4);
+
+    // Fine Progress Rule Line at Bottom Edge
+    ctx.fillStyle = "rgba(140, 120, 200, 0.25)";
+    ctx.fillRect(48, H - 54, W - 96, 2);
+
+    ctx.fillStyle = isPicardy ? "#ffd54f" : "#00e5ff";
+    ctx.fillRect(48, H - 54, (W - 96) * progress, 2);
+
+    // Lens Vignette Shading
+    const vignette = ctx.createRadialGradient(W / 2, H / 2, H * 0.42, W / 2, H / 2, H * 0.72);
+    vignette.addColorStop(0, "rgba(0,0,0,0)");
+    vignette.addColorStop(1, "rgba(0,0,0,0.65)");
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Launch render loop
+  render();
+
+  // Return teardown function if called before harness 15.0s termination
+  return () => {
+    cancelAnimationFrame(animId);
+  };
+}
+```

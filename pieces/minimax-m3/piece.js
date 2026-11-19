@@ -1,0 +1,373 @@
+export const title = "Cymatic Bloom";
+
+export function start({ audioContext, canvas, duration = 15, random }) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  const cx = W * 0.5;
+  const cy = H * 0.5;
+
+  const T0 = audioContext.currentTime;
+
+  // === Audio bus ===
+  const master = audioContext.createGain();
+  master.gain.setValueAtTime(0, T0);
+  master.gain.linearRampToValueAtTime(0.6, T0 + 0.4);
+
+  const masterFilt = audioContext.createBiquadFilter();
+  masterFilt.type = 'lowpass';
+  masterFilt.frequency.setValueAtTime(900, T0);
+  masterFilt.frequency.linearRampToValueAtTime(7500, T0 + 8);
+  masterFilt.frequency.linearRampToValueAtTime(3500, T0 + 14.5);
+  masterFilt.Q.value = 1.0;
+
+  const comp = audioContext.createDynamicsCompressor();
+  comp.threshold.value = -14;
+  comp.knee.value = 6;
+  comp.ratio.value = 2.5;
+  comp.attack.value = 0.005;
+  comp.release.value = 0.06;
+
+  // Feedback-delay reverb
+  const wetSend = audioContext.createGain();
+  wetSend.gain.value = 0.28;
+  const wet = audioContext.createDelay(1.5);
+  wet.delayTime.value = 0.43;
+  const wetFilt = audioContext.createBiquadFilter();
+  wetFilt.type = 'lowpass';
+  wetFilt.frequency.value = 2800;
+  const wetFb = audioContext.createGain();
+  wetFb.gain.value = 0.42;
+  wet.connect(wetFilt);
+  wetFilt.connect(wetFb);
+  wetFb.connect(wet);
+
+  const analyser = audioContext.createAnalyser();
+  analyser.fftSize = 256;
+  analyser.smoothingTimeConstant = 0.78;
+
+  master.connect(masterFilt);
+  master.connect(wetSend);
+  wetSend.connect(wet);
+  wetFilt.connect(masterFilt);
+  masterFilt.connect(comp);
+  comp.connect(analyser);
+  analyser.connect(audioContext.destination);
+
+  function envADSR(g, t, peak, a, h, sl, r) {
+    g.gain.cancelScheduledValues(t);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + a);
+    g.gain.linearRampToValueAtTime(peak * sl, t + a + h);
+    g.gain.linearRampToValueAtTime(0, t + a + h + r);
+  }
+
+  // Just-intonation pitches (root A2 = 110 Hz; major third 5:4; fifth 3:2)
+  const A2 = 110, E3 = 165, A3 = 220, C4 = 275, E4 = 330, Gs4 = 412.5;
+  const A4 = 440, C5 = 550, E5 = 660;
+
+  // === 1. Sub-bass drone (constant A1) ===
+  const sub = audioContext.createOscillator();
+  sub.type = 'sine';
+  sub.frequency.value = 55;
+  const subG = audioContext.createGain();
+  subG.gain.setValueAtTime(0, T0);
+  subG.gain.linearRampToValueAtTime(0.34, T0 + 1);
+  subG.gain.setValueAtTime(0.34, T0 + 13);
+  subG.gain.linearRampToValueAtTime(0, T0 + 15);
+  sub.connect(subG).connect(master);
+  sub.start(T0);
+  sub.stop(T0 + 16);
+
+  // === 2. Soft fifth drone ===
+  const fifth = audioContext.createOscillator();
+  fifth.type = 'sine';
+  fifth.frequency.value = 82.5;
+  const fifthG = audioContext.createGain();
+  fifthG.gain.setValueAtTime(0, T0);
+  fifthG.gain.linearRampToValueAtTime(0.14, T0 + 2.5);
+  fifthG.gain.setValueAtTime(0.14, T0 + 12);
+  fifthG.gain.linearRampToValueAtTime(0, T0 + 14.5);
+  fifth.connect(fifthG).connect(master);
+  fifth.start(T0);
+  fifth.stop(T0 + 16);
+
+  // === 3. Pad — chorused, slowly evolving ===
+  const padNotes = [
+    { f: A3, peak: 0.030, mul: 1.0,  q: 2   },
+    { f: E3, peak: 0.045, mul: 1.25, q: 2.5 },
+    { f: A2, peak: 0.055, mul: 1.45, q: 3   },
+    { f: C4, peak: 0.025, mul: 0.9,  q: 2   },
+  ];
+  padNotes.forEach(({ f, peak, mul, q }) => {
+    for (let d = -1; d <= 1; d += 2) {
+      const o = audioContext.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = f;
+      o.detune.value = d * 6 + (random() - 0.5) * 5;
+      const filt = audioContext.createBiquadFilter();
+      filt.type = 'lowpass';
+      filt.frequency.value = 380 * mul;
+      filt.Q.value = q;
+      const g = audioContext.createGain();
+      g.gain.setValueAtTime(0, T0);
+      g.gain.linearRampToValueAtTime(peak, T0 + 3 * mul);
+      g.gain.setValueAtTime(peak, T0 + 11);
+      g.gain.linearRampToValueAtTime(0, T0 + 14.5);
+      o.connect(filt).connect(g).connect(master);
+      o.start(T0);
+      o.stop(T0 + 16);
+    }
+  });
+
+  // === 4. Rhythmic bass pulse (asymmetric groove) ===
+  function bassPulse(t, f, amp = 0.24) {
+    const osc = audioContext.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = f;
+    const filt = audioContext.createBiquadFilter();
+    filt.type = 'lowpass';
+    filt.frequency.value = 320;
+    filt.Q.value = 8;
+    const g = audioContext.createGain();
+    envADSR(g, t, amp, 0.005, 0.04, 0.35, 0.55);
+    osc.connect(filt).connect(g).connect(master);
+    osc.start(t);
+    osc.stop(t + 1.2);
+  }
+  const pulses = [
+    [5.0, A2], [5.55, A2],
+    [6.1, E3], [6.65, A2],
+    [7.2, A2], [7.6, C4],
+    [8.15, A2], [8.7, E3], [9.1, A2],
+    [9.65, E3], [10.2, C4],
+    [10.75, A2],
+    [11.3, E3], [11.8, A2],
+    [12.3, A2], [12.7, E3],
+  ];
+  pulses.forEach(([t, f]) => bassPulse(T0 + t, f, 0.26));
+
+  // === 5. FM bell melody (inharmonic partials for bell timbre) ===
+  function bell(t, f, amp = 0.13, dur = 1.5) {
+    const car = audioContext.createOscillator();
+    car.type = 'sine';
+    car.frequency.value = f;
+    const mod = audioContext.createOscillator();
+    mod.type = 'sine';
+    mod.frequency.value = f * 3.76;
+    const modG = audioContext.createGain();
+    modG.gain.setValueAtTime(0, t);
+    modG.gain.linearRampToValueAtTime(f * 3.5, t + 0.005);
+    modG.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.45);
+    const g = audioContext.createGain();
+    envADSR(g, t, amp, 0.003, 0.04, 0.15, dur * 0.7);
+    mod.connect(modG).connect(car.frequency);
+    car.connect(g).connect(master);
+    car.start(t);
+    mod.start(t);
+    car.stop(t + dur + 0.2);
+    mod.stop(t + dur + 0.2);
+  }
+  const melody = [
+    [3.0, E4], [3.45, A4], [3.9, C5],
+    [4.5, A4], [4.85, E4],
+    [5.5, C4], [5.85, E4], [6.2, A4],
+    [6.8, C5], [7.25, E4],
+    [7.9, A4], [8.15, E5], [8.4, C5], [8.75, A4],
+    [9.25, E5], [9.6, C5], [9.9, A4],
+    [10.35, C5], [10.7, E5], [11.0, A4],
+    [11.5, E5], [11.85, A4],
+    [12.3, C5], [12.7, A4], [13.1, E4],
+  ];
+  melody.forEach(([t, f]) => bell(T0 + t, f, 0.14, 1.5));
+
+  // === 6. Reverse cymbal swell (last 3s) ===
+  const noiseLen = audioContext.sampleRate * 4;
+  const noiseBuf = audioContext.createBuffer(1, noiseLen, audioContext.sampleRate);
+  const data = noiseBuf.getChannelData(0);
+  for (let i = 0; i < noiseLen; i++) data[i] = random() * 2 - 1;
+  const noise = audioContext.createBufferSource();
+  noise.buffer = noiseBuf;
+  const nfFilt = audioContext.createBiquadFilter();
+  nfFilt.type = 'bandpass';
+  nfFilt.frequency.setValueAtTime(400, T0 + 12);
+  nfFilt.frequency.linearRampToValueAtTime(11000, T0 + 14.7);
+  nfFilt.Q.value = 4;
+  const nG = audioContext.createGain();
+  nG.gain.setValueAtTime(0, T0 + 11.5);
+  nG.gain.linearRampToValueAtTime(0.09, T0 + 14.7);
+  nG.gain.linearRampToValueAtTime(0, T0 + 15);
+  noise.connect(nfFilt).connect(nG).connect(master);
+  noise.start(T0 + 11.5);
+
+  // === 7. Closing bell triad ===
+  bell(T0 + 14.6, A4, 0.27, 1.6);
+  bell(T0 + 14.8, C5, 0.24, 1.4);
+  bell(T0 + 15.0, E5, 0.22, 1.3);
+
+  // === VISUALS ===
+  const freqData = new Uint8Array(analyser.frequencyBinCount);
+
+  // Persistent particle field
+  const particles = [];
+  for (let i = 0; i < 90; i++) {
+    particles.push({
+      phase: random() * Math.PI * 2,
+      rFactor: 0.45 + random() * 0.6,
+      speed: (random() - 0.5) * 0.65,
+      baseSize: 1 + random() * 3.5,
+      hueOffset: random() * 360,
+    });
+  }
+
+  function frame() {
+    const t = audioContext.currentTime - T0;
+    if (t >= duration) return;
+
+    analyser.getByteFrequencyData(freqData);
+
+    let bass = 0, mid = 0, treble = 0;
+    for (let i = 0; i < 5; i++) bass += freqData[i];
+    bass /= 5;
+    for (let i = 5; i < 30; i++) mid += freqData[i];
+    mid /= 25;
+    for (let i = 30; i < 80; i++) treble += freqData[i];
+    treble /= 50;
+    const bassN = bass / 255;
+    const midN = mid / 255;
+    const trebleN = treble / 255;
+
+    // Background (deep navy that brightens slightly with mid energy)
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = `rgb(${8 + midN * 8 | 0}, ${10 + midN * 14 | 0}, ${22 + midN * 35 | 0})`;
+    ctx.fillRect(0, 0, W, H);
+
+    // Vignette
+    const vig = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.7);
+    vig.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    vig.addColorStop(1, 'rgba(2, 2, 10, 0.85)');
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, W, H);
+
+    // Time-driven palette
+    const hueBase = (t * 30) % 360;
+    const hueAcc = (hueBase + 80 + bassN * 80) % 360;
+
+    const baseR = Math.min(W, H) * 0.22;
+    const pulseR = baseR + bassN * 90;
+
+    // === Spirograph overlay (additive) ===
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.globalCompositeOperation = 'lighter';
+    for (let s = 0; s < 4; s++) {
+      ctx.save();
+      ctx.rotate(s * Math.PI / 4 + t * 0.05 * s);
+      const drvR = pulseR * (1.2 + s * 0.28);
+      const innerR = drvR * 0.36;
+      const penR = drvR * 0.45;
+      ctx.beginPath();
+      const samples = 380;
+      const factor = 3 + s;
+      for (let i = 0; i <= samples; i++) {
+        const theta = i / samples * Math.PI * 2 * factor;
+        const ratio = (drvR - innerR) / innerR;
+        const x = (drvR - innerR) * Math.cos(theta) + penR * Math.cos(ratio * theta);
+        const y = (drvR - innerR) * Math.sin(theta) - penR * Math.sin(ratio * theta);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.lineWidth = 1 + s * 0.4;
+      ctx.strokeStyle = `hsla(${(hueBase + s * 35) % 360}, 75%, ${45 + trebleN * 25}%, ${0.07 + midN * 0.16})`;
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // === Central hexagonal petal structure (3 contra-rotating rings) ===
+    ctx.save();
+    ctx.translate(cx, cy);
+    const sides = 6;
+    for (let layer = 0; layer < 3; layer++) {
+      const ringR = pulseR * (0.5 + layer * 0.42);
+      const layerRot = (layer % 2 === 0 ? t * 0.16 : -t * 0.21) + layer * Math.PI / sides;
+      ctx.save();
+      ctx.rotate(layerRot);
+
+      // Connecting polygon
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.beginPath();
+      for (let i = 0; i <= sides; i++) {
+        const a = (i / sides) * Math.PI * 2;
+        const wob = 0.92 + 0.08 * Math.sin(t * 2.3 + i * 0.7 + layer);
+        const x = Math.cos(a) * ringR * wob;
+        const y = Math.sin(a) * ringR * wob;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = `hsla(${(hueBase + layer * 50) % 360}, 82%, 55%, ${0.22 + midN * 0.32})`;
+      ctx.lineWidth = 1.3 + layer * 0.4;
+      ctx.stroke();
+
+      // Vertex dots (additive glow)
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < sides; i++) {
+        const a = (i / sides) * Math.PI * 2;
+        const wob = 0.92 + 0.08 * Math.sin(t * 2.3 + i * 0.7 + layer);
+        const x = Math.cos(a) * ringR * wob;
+        const y = Math.sin(a) * ringR * wob;
+        const sz = 6 + bassN * 10 + layer;
+        const h = (hueBase + i * 60 + layer * 40) % 360;
+        const dotGrad = ctx.createRadialGradient(x, y, 0, x, y, sz * 3.5);
+        dotGrad.addColorStop(0, `hsla(${h}, 95%, 82%, 0.95)`);
+        dotGrad.addColorStop(0.3, `hsla(${h}, 90%, 60%, 0.55)`);
+        dotGrad.addColorStop(1, `hsla(${h}, 80%, 40%, 0)`);
+        ctx.fillStyle = dotGrad;
+        ctx.beginPath();
+        ctx.arc(x, y, sz * 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // === Orbiting particles ===
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.globalCompositeOperation = 'lighter';
+    particles.forEach(p => {
+      const wob = Math.sin(t * 1.4 + p.phase * 2) * 0.12;
+      const r = pulseR * p.rFactor * (1 + wob) + bassN * 50;
+      const a = p.phase + t * p.speed;
+      const x = Math.cos(a) * r;
+      const y = Math.sin(a) * r;
+      const sz = p.baseSize + bassN * 3;
+      const ph = (p.hueOffset + t * 20) % 360;
+      const alpha = 0.4 + trebleN * 0.5;
+      ctx.fillStyle = `hsla(${ph}, 80%, 75%, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(x, y, sz, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+
+    // === Center breath-glow ===
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.globalCompositeOperation = 'lighter';
+    const cgR = baseR * 0.7 + bassN * 80;
+    const cg = ctx.createRadialGradient(0, 0, 0, 0, 0, cgR);
+    cg.addColorStop(0, `hsla(${hueAcc}, 100%, 95%, ${0.35 + trebleN * 0.3})`);
+    cg.addColorStop(0.4, `hsla(${hueBase}, 80%, 50%, ${0.1 + midN * 0.15})`);
+    cg.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = cg;
+    ctx.fillRect(-cgR, -cgR, cgR * 2, cgR * 2);
+    ctx.restore();
+
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+}

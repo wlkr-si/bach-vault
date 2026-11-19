@@ -1,0 +1,4 @@
+# Published records and the harness are hashed as bytes.
+pieces/** -text
+bench/instruction.md -text
+bench/record.mjs -text

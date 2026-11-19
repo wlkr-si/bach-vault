@@ -1,0 +1,58 @@
+{
+  "wallSeconds": {
+    "value": 33.933658917,
+    "source": "tool-result"
+  },
+  "toolReportedDurationSeconds": {
+    "value": 30.27,
+    "source": "tool-result"
+  },
+  "inputTokens": {
+    "value": 16288,
+    "source": "tool-result"
+  },
+  "outputTokens": {
+    "value": 4687,
+    "source": "tool-result"
+  },
+  "reasoningTokens": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "cachedReadTokens": {
+    "value": 34304,
+    "source": "tool-result"
+  },
+  "cachedWriteTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "reportedCostUsd": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "reportedModelId": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "requestedModelId": {
+    "value": "composer-2.5",
+    "source": "tool-result"
+  },
+  "tool": {
+    "value": "cursor-agent",
+    "source": "tool-result"
+  },
+  "toolVersion": {
+    "value": "2026.11.17-f532c45",
+    "source": "tool-result"
+  },
+  "effort": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "effortSetting": {
+    "value": "composer-2.5 (model default)",
+    "source": "tool-result"
+  }
+}

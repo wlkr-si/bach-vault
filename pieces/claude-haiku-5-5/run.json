@@ -1,0 +1,66 @@
+{
+  "wallSeconds": {
+    "value": 120.979775083,
+    "source": "tool-result"
+  },
+  "toolReportedDurationSeconds": {
+    "value": 120.707,
+    "source": "tool-result"
+  },
+  "inputTokens": {
+    "value": 2,
+    "source": "tool-result"
+  },
+  "outputTokens": {
+    "value": 29295,
+    "source": "tool-result"
+  },
+  "reasoningTokens": {
+    "value": 21932,
+    "source": "tool-result"
+  },
+  "cachedReadTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "cachedWriteTokens": {
+    "value": 873,
+    "source": "tool-result"
+  },
+  "reportedCostUsd": {
+    "value": 0.014822300000000002,
+    "source": "tool-result"
+  },
+  "reportedModelId": {
+    "value": "claude-haiku-5-5",
+    "source": "tool-result"
+  },
+  "requestedModelId": {
+    "value": "claude-haiku-5-5",
+    "source": "tool-result"
+  },
+  "tool": {
+    "value": "claude",
+    "source": "tool-result"
+  },
+  "toolVersion": {
+    "value": "2.1.327 (Claude Code)",
+    "source": "tool-result"
+  },
+  "effort": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "effortSetting": {
+    "value": "high",
+    "source": "tool-result"
+  },
+  "cacheWrite5mTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "cacheWrite1hTokens": {
+    "value": 873,
+    "source": "tool-result"
+  }
+}

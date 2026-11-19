@@ -1,0 +1,66 @@
+{
+  "wallSeconds": {
+    "value": 722.0212785,
+    "source": "tool-result"
+  },
+  "toolReportedDurationSeconds": {
+    "value": 721.744,
+    "source": "tool-result"
+  },
+  "inputTokens": {
+    "value": 707,
+    "source": "tool-result"
+  },
+  "outputTokens": {
+    "value": 57802,
+    "source": "tool-result"
+  },
+  "reasoningTokens": {
+    "value": 50830,
+    "source": "tool-result"
+  },
+  "cachedReadTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "cachedWriteTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "reportedCostUsd": {
+    "value": 0.869151,
+    "source": "tool-result"
+  },
+  "reportedModelId": {
+    "value": "claude-sonnet-4-6",
+    "source": "tool-result"
+  },
+  "requestedModelId": {
+    "value": "claude-sonnet-4-6",
+    "source": "tool-result"
+  },
+  "tool": {
+    "value": "claude",
+    "source": "tool-result"
+  },
+  "toolVersion": {
+    "value": "2.1.327 (Claude Code)",
+    "source": "tool-result"
+  },
+  "effort": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "effortSetting": {
+    "value": "high",
+    "source": "tool-result"
+  },
+  "cacheWrite5mTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "cacheWrite1hTokens": {
+    "value": 0,
+    "source": "tool-result"
+  }
+}

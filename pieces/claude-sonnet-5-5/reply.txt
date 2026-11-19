@@ -1,0 +1,669 @@
+```js
+export const title = 'Descent in Three Tempi';
+
+export function start({ audioContext, canvas, duration, random }) {
+  const ctx = audioContext;
+  const D = duration > 0 ? duration : 15;
+  const W = canvas.width, H = canvas.height;
+  const g = canvas.getContext('2d');
+  const STEP = D / 128;                       // 128 sixteenths = 8 bars
+  const TAU = Math.PI * 2;
+  const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
+  const clamp = (x, a = 0, b = 1) => (x < a ? a : x > b ? b : x);
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const smooth = (a, b, x) => { const u = clamp((x - a) / (b - a)); return u * u * (3 - 2 * u); };
+  const easeOut = (u) => 1 - Math.pow(1 - clamp(u), 3);
+  const rnd = (a = 0, b = 1) => a + (b - a) * random();
+  try { if (ctx.state === 'suspended') ctx.resume(); } catch (e) {}
+  const t0 = ctx.currentTime + 0.08;
+
+  /* ───────────────────────── AUDIO GRAPH ───────────────────────── */
+  const master = ctx.createGain(); master.gain.value = 0.85;
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -16; comp.knee.value = 18; comp.ratio.value = 3.5;
+  comp.attack.value = 0.006; comp.release.value = 0.22;
+  const fade = ctx.createGain();
+  master.connect(comp); comp.connect(fade); fade.connect(ctx.destination);
+  fade.gain.setValueAtTime(1, t0);
+  fade.gain.setValueAtTime(1, t0 + D * 0.935);
+  fade.gain.linearRampToValueAtTime(0, t0 + D - 0.02);
+
+  // reverb (seeded noise impulse)
+  const sr = ctx.sampleRate;
+  const irLen = Math.floor(sr * 2.8);
+  const ir = ctx.createBuffer(2, irLen, sr);
+  for (let c = 0; c < 2; c++) {
+    const d = ir.getChannelData(c); let lp = 0;
+    for (let i = 0; i < irLen; i++) {
+      const x = i / irLen; const n = random() * 2 - 1;
+      lp += (n - lp) * (0.65 - 0.55 * x);
+      d[i] = (i < sr * 0.012 ? 0 : 1) * lp * Math.pow(1 - x, 2.6) * 1.6;
+    }
+  }
+  const rev = ctx.createConvolver(); rev.buffer = ir;
+  const revOut = ctx.createGain(); revOut.gain.value = 0.9;
+  rev.connect(revOut); revOut.connect(master);
+
+  // ping-pong delay
+  const hasPan = typeof ctx.createStereoPanner === 'function';
+  const delIn = ctx.createGain();
+  const dL = ctx.createDelay(1), dR = ctx.createDelay(1);
+  dL.delayTime.value = STEP * 3; dR.delayTime.value = STEP * 2;
+  const fb1 = ctx.createGain(), fb2 = ctx.createGain(); fb1.gain.value = 0.42; fb2.gain.value = 0.42;
+  const dlp = ctx.createBiquadFilter(); dlp.type = 'lowpass'; dlp.frequency.value = 3200;
+  delIn.connect(dL); dL.connect(fb1); fb1.connect(dR); dR.connect(fb2); fb2.connect(dlp); dlp.connect(dL);
+  const delOut = ctx.createGain(); delOut.gain.value = 0.8; delOut.connect(master);
+  if (hasPan) {
+    const pl = ctx.createStereoPanner(), pr = ctx.createStereoPanner(); pl.pan.value = -0.7; pr.pan.value = 0.7;
+    dL.connect(pl); dR.connect(pr); pl.connect(delOut); pr.connect(delOut);
+  } else { dL.connect(delOut); dR.connect(delOut); }
+
+  function makeBus(dry, rv, dl) {
+    const inp = ctx.createGain();
+    const d = ctx.createGain(); d.gain.value = dry; inp.connect(d); d.connect(master);
+    if (rv) { const r = ctx.createGain(); r.gain.value = rv; inp.connect(r); r.connect(rev); }
+    if (dl) { const e = ctx.createGain(); e.gain.value = dl; inp.connect(e); e.connect(delIn); }
+    return inp;
+  }
+  const busLead = makeBus(0.9, 0.22, 0.05);
+  const busTenor = makeBus(0.85, 0.3, 0);
+  const busBell = makeBus(0.7, 0.4, 0.3);
+  const busBass = makeBus(1, 0.04, 0);
+  const busPad = makeBus(0.7, 0.5, 0);
+  const busFx = makeBus(0.6, 0.5, 0.15);
+
+  function route(node, bus, pan) {
+    if (hasPan && pan) { const p = ctx.createStereoPanner(); p.pan.value = clamp(pan, -1, 1); node.connect(p); p.connect(bus); }
+    else node.connect(bus);
+  }
+  const nbuf = ctx.createBuffer(1, sr * 2, sr);
+  { const d = nbuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = random() * 2 - 1; }
+
+  /* ───────────────────────── INSTRUMENTS ───────────────────────── */
+  function pluck(t, midi, dur, vel, pan) {            // harpsichord-ish
+    const f = mtof(midi);
+    const o1 = ctx.createOscillator(), o2 = ctx.createOscillator();
+    o1.type = 'sawtooth'; o2.type = 'square';
+    o1.frequency.value = f; o2.frequency.value = f; o2.detune.value = 7;
+    const m2 = ctx.createGain(); m2.gain.value = 0.35;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.8;
+    lp.frequency.setValueAtTime(Math.min(f * 9, 11000), t);
+    lp.frequency.exponentialRampToValueAtTime(Math.min(Math.max(f * 2.5, 600), 8000), t + 0.3);
+    const env = ctx.createGain();
+    const pk = 0.2 * vel, hold = Math.max(dur, 0.12);
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.linearRampToValueAtTime(pk, t + 0.003);
+    env.gain.exponentialRampToValueAtTime(pk * 0.25, t + 0.003 + hold);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.003 + hold + 0.18);
+    o1.connect(lp); o2.connect(m2); m2.connect(lp); lp.connect(env);
+    route(env, busLead, pan);
+    const end = t + hold + 0.3;
+    o1.start(t); o2.start(t); o1.stop(end); o2.stop(end);
+    const n = ctx.createBufferSource(); n.buffer = nbuf;
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3000;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.05 * vel, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.02);
+    n.connect(hp); hp.connect(ng); route(ng, busLead, pan);
+    n.start(t, rnd(0, 1.5)); n.stop(t + 0.03);
+  }
+  function bow(t, midi, dur, vel, pan) {              // viola-ish tenor
+    const f = mtof(midi);
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.7;
+    lp.frequency.setValueAtTime(350, t);
+    lp.frequency.linearRampToValueAtTime(1100 + 1400 * vel, t + Math.min(0.25, dur));
+    const env = ctx.createGain();
+    const pk = 0.11 * vel, rel = 0.22, end = t + Math.max(dur, 0.2);
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.linearRampToValueAtTime(pk, t + 0.06);
+    env.gain.setValueAtTime(pk, end);
+    env.gain.linearRampToValueAtTime(0.0001, end + rel);
+    lp.connect(env); route(env, busTenor, pan);
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 5.2 + random() * 0.6;
+    const lg = ctx.createGain(); lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(9, t + 0.5);
+    lfo.connect(lg);
+    const stopT = end + rel + 0.05;
+    for (const det of [-7, 7]) {
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = det;
+      lg.connect(o.detune); o.connect(lp); o.start(t); o.stop(stopT);
+    }
+    const o3 = ctx.createOscillator(); o3.type = 'triangle'; o3.frequency.value = f;
+    const g3 = ctx.createGain(); g3.gain.value = 0.8; o3.connect(g3); g3.connect(lp); o3.start(t); o3.stop(stopT);
+    lfo.start(t); lfo.stop(stopT);
+  }
+  function bell(t, midi, vel, dec, pan) {             // glassy celesta
+    const f = mtof(midi);
+    const env = ctx.createGain(), pk = 0.17 * vel;
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.linearRampToValueAtTime(pk, t + 0.002);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + dec);
+    const o1 = ctx.createOscillator(); o1.type = 'sine'; o1.frequency.value = f;
+    const o2 = ctx.createOscillator(); o2.type = 'triangle'; o2.frequency.value = f * 2;
+    const o3 = ctx.createOscillator(); o3.type = 'sine'; o3.frequency.value = f * 5.43;
+    const g2 = ctx.createGain(); g2.gain.value = 0.22;
+    const g3 = ctx.createGain(); g3.gain.value = 0.1;
+    const e3 = ctx.createGain(); e3.gain.setValueAtTime(1, t); e3.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    o1.connect(env); o2.connect(g2); g2.connect(env); o3.connect(g3); g3.connect(e3); e3.connect(env);
+    route(env, busBell, pan);
+    const end = t + dec + 0.05;
+    o1.start(t); o2.start(t); o3.start(t); o1.stop(end); o2.stop(end); o3.stop(end);
+  }
+  function bassNote(t, midi, dur, vel) {
+    const f = mtof(midi);
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f;
+    const s = ctx.createOscillator(); s.type = 'sine'; s.frequency.value = f;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 380; lp.Q.value = 0.7;
+    const gs = ctx.createGain(); gs.gain.value = 0.9;
+    const env = ctx.createGain(), pk = 0.26 * vel;
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.linearRampToValueAtTime(pk, t + 0.03);
+    env.gain.setValueAtTime(pk, t + dur - 0.05);
+    env.gain.linearRampToValueAtTime(0.0001, t + dur + 0.25);
+    o.connect(lp); lp.connect(env); s.connect(gs); gs.connect(env);
+    route(env, busBass, 0);
+    o.start(t); s.start(t); o.stop(t + dur + 0.3); s.stop(t + dur + 0.3);
+  }
+  function bassPluck(t, midi, vel) {
+    const f = mtof(midi);
+    const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = f;
+    const o2 = ctx.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = f;
+    const m2 = ctx.createGain(); m2.gain.value = 0.3;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900;
+    const env = ctx.createGain(), pk = 0.17 * vel;
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.linearRampToValueAtTime(pk, t + 0.005);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+    o.connect(lp); o2.connect(m2); m2.connect(lp); lp.connect(env); route(env, busBass, 0);
+    o.start(t); o2.start(t); o.stop(t + 0.25); o2.stop(t + 0.25);
+  }
+  function padChord(t, midis, dur, vol) {
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.6;
+    lp.frequency.setValueAtTime(500, t); lp.frequency.linearRampToValueAtTime(1500, t + dur);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.linearRampToValueAtTime(vol, t + 0.45);
+    env.gain.setValueAtTime(vol, t + dur - 0.1);
+    env.gain.linearRampToValueAtTime(0.0001, t + dur + 0.5);
+    lp.connect(env); route(env, busPad, 0);
+    for (const m of midis) for (const det of [-6, 6]) {
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = mtof(m); o.detune.value = det;
+      o.connect(lp); o.start(t); o.stop(t + dur + 0.6);
+    }
+  }
+  function boom(t) {
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(36.7, t + 0.3);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t); env.gain.linearRampToValueAtTime(0.85, t + 0.006);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 2.2);
+    o.connect(env); route(env, busBass, 0); o.start(t); o.stop(t + 2.3);
+  }
+  function riser(tS, tE) {
+    const ns = ctx.createBufferSource(); ns.buffer = nbuf; ns.loop = true;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.5;
+    bp.frequency.setValueAtTime(400, tS); bp.frequency.exponentialRampToValueAtTime(7000, tE);
+    bp.frequency.exponentialRampToValueAtTime(9500, tE + 2);
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.0001, tS); ng.gain.exponentialRampToValueAtTime(0.13, tE);
+    ng.gain.exponentialRampToValueAtTime(0.0001, tE + 2.0);
+    ns.connect(bp); bp.connect(ng); route(ng, busFx, 0);
+    ns.start(tS, 0); ns.stop(tE + 2.1);
+  }
+
+  /* ───────────────────────── COMPOSITION ─────────────────────────
+     A chromatic lament bass (D–C♯–C–B–B♭–A) in 8 bars.
+     One motif is sounded in three simultaneous tempi:
+       lead  = the motif, ×1        (pluck)
+       tenor = augmentation, ×2     (bowed)
+       bells = inversion, diminution ÷2 (mirror image, twice as fast)
+     Every beat is snapped to the current chord, so the counterpoint
+     stays consonant while the sequence descends with the bass.
+     Bar 7 accelerates to a 32nd-note run, bar 8 resolves to a
+     Picardy D major.                                                */
+  const CH = {
+    Dm:  { tones: [2, 5, 9],      scale: [2, 4, 5, 7, 9, 10, 0, 1] },
+    A7:  { tones: [9, 1, 4, 7],   scale: [9, 11, 1, 2, 4, 6, 7] },
+    Dm7: { tones: [0, 2, 5, 9],   scale: [0, 2, 4, 5, 7, 9, 10] },
+    Bo:  { tones: [11, 2, 5, 9],  scale: [11, 0, 2, 4, 5, 7, 9] },
+    Gm7: { tones: [7, 10, 2, 5],  scale: [7, 9, 10, 0, 2, 4, 5] },
+    F6:  { tones: [9, 0, 5, 2],   scale: [5, 7, 9, 10, 0, 2, 4] },
+    D:   { tones: [2, 6, 9],      scale: [2, 4, 6, 7, 9, 11, 1] },
+  };
+  const slotChord = [CH.Dm, CH.Dm, CH.A7, CH.A7, CH.Dm7, CH.Dm7, CH.Bo, CH.Bo,
+    CH.Gm7, CH.Gm7, CH.F6, CH.F6, CH.Gm7, CH.A7, CH.D, CH.D];
+  const slotBass = [38, 38, 37, 37, 36, 36, 35, 35, 34, 34, 33, 33, 31, 33, 38, 38];
+  const M = [[0, 2, 0], [2, 2, 3], [4, 1, 7], [5, 1, 8], [6, 1, 7], [7, 1, 5],
+    [8, 2, 12], [10, 1, 10], [11, 1, 8], [12, 2, 7], [14, 1, 5], [15, 1, 3]];
+  const H8 = M.filter((n) => n[0] < 8);
+
+  const EV = [[], [], [], [], []];
+  function addNote(v, step, midi, durSteps, vel) {
+    const t = t0 + step * STEP + random() * 0.004;
+    const dur = durSteps * STEP;
+    const pan = v === 0 ? -0.22 : v === 1 ? 0.18 : (random() * 2 - 1) * 0.6;
+    if (v === 0) pluck(t, midi, dur, vel, pan);
+    else if (v === 1) bow(t, midi, dur, vel, pan);
+    else if (v === 2) bell(t, midi, vel, 0.9, pan);
+    else if (v === 4) bell(t, midi, vel, 2.2, pan);
+    EV[v].push({ t: step * STEP, dur, midi, vel, step });
+  }
+  function snap(target, pcs, prev, lo, hi) {
+    let best = null, bc = 1e9;
+    for (let m = Math.floor(target) - 9; m <= Math.ceil(target) + 9; m++) {
+      if (m < lo || m > hi) continue;
+      if (pcs.indexOf(((m % 12) + 12) % 12) < 0) continue;
+      const c = Math.abs(m - target) - (m > target ? 0.02 : 0) + (m === prev ? 0.75 : 0);
+      if (c < bc) { bc = c; best = m; }
+    }
+    return best === null ? Math.round(target) : best;
+  }
+  const prevV = [-1, -1, -1];
+  function statement(v, start, notes, scale, offset, sign, lo, hi) {
+    for (const [st, du, semi] of notes) {
+      const step = start + st * scale;
+      if (step >= 128) continue;
+      const sl = Math.min(15, Math.floor(step / 8));
+      const ch = slotChord[sl];
+      const target = slotBass[sl] + offset + sign * semi;
+      const strong = step % 4 === 0;
+      const m = snap(target, strong ? ch.tones : ch.scale, prevV[v], lo, hi);
+      prevV[v] = m;
+      const r = step / 128;
+      const vel = v === 0 ? (0.5 + 0.42 * r) * (strong ? 1 : 0.8)
+        : v === 1 ? 0.72 + 0.2 * r
+        : (0.4 + 0.38 * r) * (strong ? 1 : 0.85);
+      addNote(v, step, m, du * scale, vel);
+    }
+  }
+  // lead: bars 1–6 full motif (sequence descends with the bass), bar 7 half-motif twice
+  for (let k = 0; k < 6; k++) statement(0, k * 16, M, 1, 24, 1, 52, 84);
+  statement(0, 96, H8, 1, 31, 1, 52, 84);
+  statement(0, 104, H8, 1, 31, 1, 52, 84);
+  addNote(0, 112, 74, 4, 0.85);
+  addNote(0, 116, 78, 12, 0.75);
+  // tenor: augmentation, enters bar 3
+  statement(1, 32, M, 2, 15, 1, 45, 68);
+  statement(1, 64, M, 2, 15, 1, 45, 68);
+  addNote(1, 96, 62, 10, 0.85);   // suspension D over A7 …
+  addNote(1, 106, 61, 6, 0.85);   // … resolving to the leading tone
+  addNote(1, 112, 62, 16, 0.9);
+  // bells: inversion + diminution, enters bar 5
+  for (let k = 0; k < 4; k++) statement(2, 64 + k * 8, M, 0.5, 45, -1, 60, 90);
+  // bar 7: rising 32nd-note run
+  for (let i = 0; i < 32; i++) {
+    const step = 96 + i * 0.5;
+    const ch = slotChord[Math.floor(step / 8)];
+    const target = 62 + i * (28 / 31);
+    const m = snap(target, step % 4 === 0 ? ch.tones : ch.scale, prevV[2], 60, 92);
+    prevV[2] = m;
+    addNote(2, step, m, 0.5, 0.36 + 0.3 * (i / 31));
+  }
+  addNote(2, 112, 90, 8, 0.8);
+  // sparkles after the Picardy arrival
+  for (let i = 0; i < 28; i++) {
+    const step = 112.6 + i * 0.5 + random() * 0.4;
+    const m = snap(rnd(74, 98), CH.D.scale, -1, 72, 98);
+    addNote(4, step, m, 1, 0.05 + 0.55 * (1 - i / 32));
+  }
+  EV[4].sort((a, b) => a.step - b.step);
+
+  // bass
+  for (let k = 0; k < 6; k++) bassNote(t0 + k * 16 * STEP, slotBass[2 * k], 16 * STEP, 0.8 + 0.03 * k);
+  bassNote(t0 + 96 * STEP, 31, 8 * STEP, 0.95);
+  bassNote(t0 + 104 * STEP, 33, 8 * STEP, 1.0);
+  bassNote(t0 + 112 * STEP, 38, 16 * STEP, 1.0);
+  for (let s = 32; s < 112; s += (s < 64 ? 4 : 2)) {
+    const m = slotBass[Math.floor(s / 8)] + 12;
+    bassPluck(t0 + s * STEP, m, (s % 4 === 0 ? 1 : 0.6) * (0.55 + 0.45 * (s - 32) / 80));
+  }
+  // pads
+  const voicing = (ch) => {
+    const out = [];
+    for (const pc of ch.tones) for (let m = 50; m <= 67; m++) if (m % 12 === pc) { out.push(m); break; }
+    return out.sort((a, b) => a - b);
+  };
+  for (let k = 0; k < 6; k++) padChord(t0 + k * 16 * STEP, voicing(slotChord[2 * k]), 16 * STEP, 0.02 + 0.012 * (k / 5));
+  padChord(t0 + 96 * STEP, voicing(CH.Gm7), 8 * STEP, 0.034);
+  padChord(t0 + 104 * STEP, voicing(CH.A7), 8 * STEP, 0.034);
+  padChord(t0 + 112 * STEP, [50, 54, 57, 62, 66, 69, 74], 16 * STEP, 0.03);
+  riser(t0 + 96 * STEP, t0 + 112 * STEP);
+  boom(t0 + 112 * STEP);
+
+  /* ───────────────────────── VISUAL DATA ───────────────────────── */
+  const KEYS = [[0, 440], [16, 520], [32, 600], [48, 680], [64, 760], [80, 840], [96, 1000], [104, 840], [112, 640]];
+  function sunY(t) {
+    let k = -1;
+    for (let i = 0; i < KEYS.length; i++) if (t >= KEYS[i][0] * STEP) k = i;
+    if (k < 0) return 440;
+    const y1 = KEYS[k][1], y0 = k > 0 ? KEYS[k - 1][1] : y1;
+    const a = t - KEYS[k][0] * STEP;
+    const d = (y0 - y1) * Math.exp(-6 * a) * (Math.cos(10 * a) + 0.6 * Math.sin(10 * a));
+    return y1 + d + 7 * Math.sin(t * 1.7);
+  }
+  const TK = [[0, [16, 44, 104]], [4, [34, 40, 124]], [8, [104, 30, 112]], [11.5, [170, 36, 76]],
+    [13.125, [255, 150, 64]], [15, [255, 196, 112]]];
+  function tintAt(t) {
+    const s = t * 15 / D;
+    for (let i = 1; i < TK.length; i++) {
+      if (s <= TK[i][0]) {
+        const u = clamp((s - TK[i - 1][0]) / (TK[i][0] - TK[i - 1][0]));
+        return [lerp(TK[i - 1][1][0], TK[i][1][0], u), lerp(TK[i - 1][1][1], TK[i][1][1], u), lerp(TK[i - 1][1][2], TK[i][1][2], u)];
+      }
+    }
+    return TK[TK.length - 1][1];
+  }
+  const rgba = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${clamp(a, 0, 1).toFixed(3)})`;
+  const mix = (c, d, u) => [lerp(c[0], d[0], u), lerp(c[1], d[1], u), lerp(c[2], d[2], u)];
+  const CX = W / 2;
+  const RING = [
+    { v: 1, R: 140, P: 32 * STEP, dir: 1, col: [255, 96, 128], cm: 56, entry: 32 * STEP, bs: 1.3, label: '2\u00d7' },
+    { v: 0, R: 255, P: 16 * STEP, dir: 1, col: [255, 200, 100], cm: 66, entry: 0, bs: 1, label: '1\u00d7' },
+    { v: 2, R: 370, P: 8 * STEP, dir: -1, col: [110, 225, 255], cm: 72, entry: 64 * STEP, bs: 0.75, label: '\u00bd\u00d7' },
+  ];
+  const ringOf = [RING[1], RING[0], RING[2]];     // index by voice
+  const GR = 170;
+  for (let v = 0; v < 3; v++) {
+    const R = ringOf[v];
+    for (const e of EV[v]) {
+      e.by = sunY(e.t) - R.R - clamp((e.midi - R.cm) * 3, -36, 36);
+      e.emb = [];
+      const n = v === 2 ? 1 : 2;
+      for (let i = 0; i < n; i++) e.emb.push({ dx: rnd(-8, 8), vx: rnd(-38, 38), vy: rnd(-60, 20), life: rnd(1.4, 2.7) });
+    }
+  }
+  for (const e of EV[4]) { e.x = rnd(120, W - 120); e.y = rnd(160, 900); }
+  const stars = [];
+  for (let i = 0; i < 170; i++) stars.push({ x: rnd(0, W), y: rnd(0, H), d: rnd(0.15, 1), s: rnd(0.6, 2), f: rnd(0.8, 3), p: rnd(0, TAU), b: rnd(0.4, 1) });
+
+  const mk = (w, h) => (typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : document.createElement('canvas'));
+  const gt = mk(160, 160); gt.width = 160; gt.height = 160;
+  const gx = gt.getContext('2d');
+  const gid = gx.createImageData(160, 160);
+  for (let i = 0; i < 160 * 160; i++) {
+    const v = random() * 255;
+    gid.data[i * 4] = v; gid.data[i * 4 + 1] = v; gid.data[i * 4 + 2] = v; gid.data[i * 4 + 3] = 26;
+  }
+  gx.putImageData(gid, 0, 0);
+  const grainPat = g.createPattern(gt, 'repeat');
+
+  const NAMES = [['D', 38, 0], ['C\u266f', 37, 16], ['C', 36, 32], ['B', 35, 48], ['B\u2640'.replace('\u2640', '\u266d'), 34, 64], ['A', 33, 80], ['G\u266f', 32, -1], ['G', 31, 96]];
+  const TB = 112 * STEP;
+  let frameNo = 0;
+
+  /* ───────────────────────── DRAW ───────────────────────── */
+  function draw(t) {
+    frameNo++;
+    const sy = sunY(t);
+    const tint = tintAt(t);
+    const bl = t > TB ? clamp((t - TB) / 1.8) : 0;
+    const bt = Math.max(0, t - TB);
+
+    // voice activity
+    const act = [0, 0, 0];
+    for (let v = 0; v < 3; v++) for (const e of EV[v]) {
+      if (e.t > t) break;
+      const a = Math.exp(-(t - e.t) * 3.5);
+      if (a > act[v]) act[v] = a;
+    }
+    const energy = clamp((act[0] + act[1] + act[2]) / 2 + bl * 0.6);
+
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 1;
+    const bg = g.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#03040b'); bg.addColorStop(1, '#07050f');
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    const gl = g.createRadialGradient(CX, sy, 0, CX, sy, 820);
+    gl.addColorStop(0, rgba(tint, 0.42 * (0.5 + energy * 0.5)));
+    gl.addColorStop(0.5, rgba(tint, 0.12 * (0.5 + energy * 0.5)));
+    gl.addColorStop(1, rgba(tint, 0));
+    g.fillStyle = gl; g.fillRect(0, 0, W, H);
+    const hz = g.createLinearGradient(0, H * 0.7, 0, H);
+    hz.addColorStop(0, rgba(tint, 0)); hz.addColorStop(1, rgba(tint, 0.16));
+    g.fillStyle = hz; g.fillRect(0, H * 0.7, W, H * 0.3);
+
+    g.globalCompositeOperation = 'lighter';
+
+    // stars with falling parallax
+    for (const s of stars) {
+      const y = (((s.y - (sy - 440) * s.d * 0.4) % H) + H) % H;
+      const tw = 0.5 + 0.5 * Math.sin(t * s.f + s.p);
+      const al = (0.12 + 0.45 * tw) * s.b * (0.7 + energy * 0.8);
+      g.fillStyle = rgba(mix([200, 215, 255], tint, 0.3), al);
+      g.fillRect(s.x, y, s.s, s.s);
+    }
+
+    // plumb line
+    const lg = g.createLinearGradient(0, 0, 0, sy);
+    lg.addColorStop(0, 'rgba(255,235,200,0)'); lg.addColorStop(1, 'rgba(255,235,200,0.38)');
+    g.fillStyle = lg; g.fillRect(CX - 0.75, 0, 1.5, sy);
+
+    // lament ladder (right rail)
+    const rx = W - 56;
+    g.strokeStyle = 'rgba(255,255,255,0.12)'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(rx, 440); g.lineTo(rx, 1000); g.stroke();
+    g.font = '15px "Helvetica Neue", Helvetica, Arial, sans-serif';
+    g.textAlign = 'right'; g.textBaseline = 'middle';
+    for (const [nm, p, st] of NAMES) {
+      const y = 440 + (38 - p) * 80;
+      const seen = st >= 0 && t >= st * STEP;
+      g.strokeStyle = rgba([255, 220, 170], seen ? 0.5 : 0.16);
+      g.beginPath(); g.moveTo(rx - 7, y); g.lineTo(rx + 7, y); g.stroke();
+      g.fillStyle = rgba([255, 225, 180], seen ? 0.6 : 0.2);
+      g.fillText(nm, rx - 14, y);
+    }
+    {
+      const my = clamp(sy, 400, 1040);
+      g.fillStyle = rgba([255, 235, 200], 0.9);
+      g.beginPath(); g.moveTo(rx, my - 7); g.lineTo(rx + 5, my); g.lineTo(rx, my + 7); g.lineTo(rx - 5, my); g.closePath(); g.fill();
+      g.fillStyle = rgba([255, 200, 120], 0.2);
+      g.beginPath(); g.arc(rx, my, 16, 0, TAU); g.fill();
+    }
+
+    // rings
+    const rs = 1 + 0.75 * easeOut(bl);
+    const ra = 1 - smooth(0, 0.7, bl);
+    for (const R of RING) {
+      const p = smooth(R.entry, R.entry + 1.0, t);
+      const rad = R.R * rs;
+      const a0 = -Math.PI / 2;
+      g.lineWidth = 1;
+      g.strokeStyle = rgba(R.col, 0.05 * ra);
+      g.beginPath(); g.arc(CX, sy, rad, 0, TAU); g.stroke();
+      if (p > 0.001) {
+        g.lineWidth = 1.2 + act[R.v] * 1.6;
+        g.strokeStyle = rgba(R.col, (0.16 + 0.45 * act[R.v]) * ra);
+        g.beginPath(); g.arc(CX, sy, rad, a0, a0 + R.dir * p * TAU, R.dir < 0); g.stroke();
+        g.lineWidth = 1;
+        for (let k = 0; k < 16; k++) {
+          const ang = a0 + k * TAU / 16, len = k % 4 === 0 ? 12 : 6;
+          g.strokeStyle = rgba(R.col, 0.2 * ra * p);
+          g.beginPath();
+          g.moveTo(CX + (rad - len / 2) * Math.cos(ang), sy + (rad - len / 2) * Math.sin(ang));
+          g.lineTo(CX + (rad + len / 2) * Math.cos(ang), sy + (rad + len / 2) * Math.sin(ang));
+          g.stroke();
+        }
+        g.font = '18px "Helvetica Neue", Helvetica, Arial, sans-serif';
+        g.textAlign = 'left'; g.textBaseline = 'middle';
+        g.fillStyle = rgba(R.col, 0.5 * ra * p);
+        g.fillText(R.label, CX + rad + 12, sy);
+      }
+    }
+
+    // embers falling (descent)
+    g.lineCap = 'round';
+    for (let v = 0; v < 3; v++) {
+      const col = ringOf[v].col;
+      for (const e of EV[v]) {
+        if (e.t > t) break;
+        const a = t - e.t;
+        if (a > 2.8) continue;
+        for (const m of e.emb) {
+          if (a > m.life) continue;
+          const x = CX + m.dx + m.vx * a;
+          const y = e.by + m.vy * a + 0.5 * GR * a * a;
+          const vyN = m.vy + GR * a;
+          const u = 1 - a / m.life;
+          g.strokeStyle = rgba(col, u * u * 0.6 * e.vel);
+          g.lineWidth = 1.6;
+          g.beginPath(); g.moveTo(x, y); g.lineTo(x - m.vx * 0.05, y - vyN * 0.05); g.stroke();
+        }
+      }
+    }
+
+    // necklaces + beads
+    for (const R of RING) {
+      const pts = [];
+      for (const e of EV[R.v]) {
+        if (e.t > t) break;
+        const age = t - e.t;
+        if (age > R.P) continue;
+        const ang = -Math.PI / 2 + R.dir * TAU * age / R.P;
+        const r = (R.R + clamp((e.midi - R.cm) * 3, -36, 36)) * rs;
+        pts.push({ x: CX + r * Math.cos(ang), y: sy + r * Math.sin(ang), age, vel: e.vel });
+      }
+      g.lineWidth = 1.4;
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1], b = pts[i];
+        const al = Math.pow(1 - b.age / R.P, 1.4) * 0.55 * ra;
+        if (al < 0.01) continue;
+        g.strokeStyle = rgba(R.col, al);
+        g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+      }
+      const core = mix(R.col, [255, 255, 255], 0.55);
+      for (const q of pts) {
+        const lf = Math.pow(1 - q.age / R.P, 1.2) * ra;
+        const fresh = Math.exp(-q.age * 6);
+        const rr = (2.2 + 4.5 * q.vel * (0.35 + fresh)) * R.bs;
+        g.fillStyle = rgba(R.col, 0.1 * lf);
+        g.beginPath(); g.arc(q.x, q.y, rr * 3.2, 0, TAU); g.fill();
+        g.fillStyle = rgba(core, 0.9 * lf);
+        g.beginPath(); g.arc(q.x, q.y, rr, 0, TAU); g.fill();
+        if (q.age < 0.45) {
+          g.strokeStyle = rgba(R.col, (1 - q.age / 0.45) * 0.5 * q.vel * ra);
+          g.lineWidth = 1.5;
+          g.beginPath(); g.arc(q.x, q.y, 6 + q.age * 90, 0, TAU); g.stroke();
+        }
+      }
+    }
+
+    // sparkles (final bar)
+    for (const e of EV[4]) {
+      if (e.t > t) break;
+      const age = t - e.t;
+      if (age > 1.4) continue;
+      const u = 1 - age / 1.4;
+      const L = 8 + 26 * Math.sqrt(u) * e.vel * 1.6;
+      g.strokeStyle = rgba([255, 235, 190], u * e.vel * 1.3);
+      g.lineWidth = 1.2;
+      g.beginPath(); g.moveTo(e.x - L, e.y); g.lineTo(e.x + L, e.y); g.moveTo(e.x, e.y - L); g.lineTo(e.x, e.y + L); g.stroke();
+      g.fillStyle = rgba([255, 245, 220], u * e.vel);
+      g.beginPath(); g.arc(e.x, e.y, 2.2, 0, TAU); g.fill();
+    }
+
+    // sun
+    let pulse = 0;
+    if (t >= 32 * STEP && t < TB) {
+      const per = (t < 64 * STEP ? 4 : 2) * STEP;
+      const ph = ((t - 32 * STEP) % per) / per;
+      pulse = Math.exp(-ph * 4.5) * (t < 64 * STEP ? 0.5 : 0.8);
+    }
+    const sunR = 34 + 9 * pulse + 70 * easeOut(bl) + 3 * Math.sin(t * 2.1);
+    const gold = [255, 190, 100];
+    const t2 = mix(tint, gold, 0.5);
+    const sg = g.createRadialGradient(CX, sy, 0, CX, sy, sunR * 5);
+    sg.addColorStop(0, 'rgba(255,250,235,1)');
+    sg.addColorStop(0.12, 'rgba(255,225,170,0.95)');
+    sg.addColorStop(0.3, rgba(t2, 0.38));
+    sg.addColorStop(1, rgba(t2, 0));
+    g.fillStyle = sg; g.beginPath(); g.arc(CX, sy, sunR * 5, 0, TAU); g.fill();
+    g.fillStyle = 'rgba(255,252,240,0.95)';
+    g.beginPath(); g.arc(CX, sy, sunR * 0.5, 0, TAU); g.fill();
+
+    // bloom: Picardy dawn
+    if (bt > 0) {
+      g.fillStyle = rgba([255, 236, 190], 0.55 * Math.exp(-bt * 3.2));
+      g.fillRect(0, 0, W, H);
+      const grow = easeOut(clamp(bt / 1.4));
+      const fadeR = 0.14 + 0.5 * (1 - smooth(0.4, 3, bt));
+      for (let k = 0; k < 40; k++) {
+        const ang = k * TAU / 40 + bt * 0.08;
+        const len = (140 + 1100 * grow) * (k % 2 ? 0.62 : 1);
+        const x0 = CX + Math.cos(ang) * sunR * 1.1, y0 = sy + Math.sin(ang) * sunR * 1.1;
+        g.strokeStyle = rgba([255, 214, 140], fadeR * (k % 2 ? 0.55 : 0.9) * (0.8 + 0.2 * Math.sin(t * 3 + k)));
+        g.lineWidth = k % 2 ? 1.5 : 2.5;
+        g.beginPath(); g.moveTo(x0, y0); g.lineTo(x0 + Math.cos(ang) * len, y0 + Math.sin(ang) * len); g.stroke();
+      }
+      for (let j = 0; j < 3; j++) {
+        const rr = 80 + bt * 420 - j * 170;
+        if (rr > 60) {
+          g.strokeStyle = rgba([255, 205, 130], 0.35 * clamp(1 - rr / 1000));
+          g.lineWidth = 2;
+          g.beginPath(); g.arc(CX, sy, rr, 0, TAU); g.stroke();
+        }
+      }
+    }
+
+    g.globalCompositeOperation = 'source-over';
+
+    // vignette
+    const vg = g.createRadialGradient(CX, H / 2, 380, CX, H / 2, 920);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.72)');
+    g.fillStyle = vg; g.fillRect(0, 0, W, H);
+
+    // grain
+    g.save();
+    const ox = (frameNo * 53) % 160, oy = (frameNo * 97) % 160;
+    g.translate(ox, oy); g.globalAlpha = 0.55; g.fillStyle = grainPat; g.fillRect(-ox, -oy, W, H);
+    g.restore();
+    g.globalAlpha = 1;
+
+    // title
+    try { g.letterSpacing = '10px'; } catch (e) {}
+    g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+    g.font = '600 24px "Helvetica Neue", Helvetica, Arial, sans-serif';
+    g.fillStyle = 'rgba(255,236,205,0.5)';
+    g.fillText('DESCENT IN THREE TEMPI', W / 2, 1290);
+    try { g.letterSpacing = '4px'; } catch (e) {}
+    g.font = '14px "Helvetica Neue", Helvetica, Arial, sans-serif';
+    g.fillStyle = 'rgba(255,236,205,0.3)';
+    g.fillText('D minor \u2192 D major', W / 2, 1316);
+    try { g.letterSpacing = '0px'; } catch (e) {}
+
+    // fades
+    const inA = 1 - smooth(0, 0.7, t);
+    const outA = 0.55 * smooth(D - 0.9, D, t);
+    const ov = Math.max(inA, outA);
+    if (ov > 0.002) { g.fillStyle = `rgba(2,2,6,${ov.toFixed(3)})`; g.fillRect(0, 0, W, H); }
+  }
+
+  /* ───────────────────────── LOOP ───────────────────────── */
+  let stopped = false, rafId = 0;
+  const raf = (typeof requestAnimationFrame === 'function') ? requestAnimationFrame : (f) => setTimeout(() => f(), 16);
+  const caf = (typeof cancelAnimationFrame === 'function') ? cancelAnimationFrame : clearTimeout;
+  function frame() {
+    if (stopped) return;
+    const t = clamp(ctx.currentTime - t0, 0, D);
+    draw(t);
+    rafId = raf(frame);
+  }
+  frame();
+
+  return function stop() {
+    stopped = true;
+    try { caf(rafId); } catch (e) {}
+    try { fade.disconnect(); } catch (e) {}
+  };
+}
+```
+
+**Descent in Three Tempi** is a 15-second piece in D minor that resolves to a Picardy D major. I haven't run it, so the sound and picture are untested.
+
+**Music:** A chromatic lament bass (D–C♯–C–B–B♭–A–G–A–D) runs across 8 bars, and one 1-bar motif is heard in three tempi at once:
+- A harpsichord-like lead plays the motif at normal speed, sequencing down with the bass.
+- A bowed tenor plays it in augmentation (half speed), entering in bar 3.
+- Glassy bells play it inverted and in diminution (double speed), entering in bar 5.
+
+The motif's beats are snapped to the current chord, so the counterpoint stays consonant. Bar 7 builds with a noise riser and a rising 32nd-note run. Bar 8 lands on D major with a low boom and a shower of bell sparkles.
+
+**Picture:** A sun sinks stepwise with the bass, bouncing on a spring at each bar change. Three rings turn around it at 2:1:½ speeds, and each ring's necklace of beads traces its voice's motif. The bell ring turns the opposite way, as the mirror of the lead. Each note sheds embers that fall, there is a bass-note ladder on the right edge, and the colour moves from cold blue through crimson to gold. At the Picardy arrival the sun rises into a burst of rays.
+
+All timing and note events are computed up front. The picture is a pure function of audio time, so the frames don't depend on frame rate.

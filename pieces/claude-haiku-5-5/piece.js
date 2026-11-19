@@ -1,0 +1,448 @@
+export const title = "Ricercar of Lamps";
+
+const BEAT = 0.6;          // 100 bpm
+const CHORD_BEAT = 22.5;   // final D major arrives at 13.5 s
+const RING_R = [150, 265, 380, 495];
+const VOICE_COL = [[255, 207, 122], [255, 107, 74], [79, 209, 197], [167, 139, 250]];
+
+// Subject in D minor: nine notes, 4.5 beats
+const SUBJECT = [
+  [62, 0.5], [65, 0.5], [69, 0.5], [67, 0.5],
+  [65, 0.5], [64, 0.5], [62, 0.5], [61, 0.5], [62, 1.0],
+];
+
+// Exposition (subject, answer at the fifth, octave-displaced entries),
+// followed by a stretto of overlapping entries.
+const ENTRIES = [
+  { beat: 0,    tr: 0,  oct: 0,   voice: 0, pan: -0.55, vel: 0.50 },
+  { beat: 4.5,  tr: 7,  oct: 0,   voice: 1, pan:  0.55, vel: 0.46 },
+  { beat: 9.0,  tr: 0,  oct: -12, voice: 2, pan: -0.30, vel: 0.44 },
+  { beat: 13.5, tr: 7,  oct: -12, voice: 3, pan:  0.30, vel: 0.42 },
+  { beat: 15.0, tr: -5, oct: 12,  voice: 0, pan: -0.15, vel: 0.36 },
+  { beat: 16.5, tr: 0,  oct: 0,   voice: 1, pan:  0.15, vel: 0.36 },
+  { beat: 18.0, tr: 7,  oct: -12, voice: 2, pan: -0.45, vel: 0.34 },
+  { beat: 19.5, tr: 2,  oct: 0,   voice: 3, pan:  0.45, vel: 0.34 },
+];
+
+const BASS_ROOTS = [38, 34, 36, 38, 31, 34]; // D Bb C D G Bb
+
+const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
+const PC_ANG = (pc) => (pc / 12) * Math.PI * 2 - Math.PI / 2;
+
+export function start({ audioContext: ac, canvas, duration, random }) {
+  const rnd = () => random();
+  const t0 = ac.currentTime + 0.06;
+  try { if (ac.state === "suspended") ac.resume(); } catch (e) { /* ignore */ }
+
+  // ---------- Audio graph ----------
+  const comp = ac.createDynamicsCompressor();
+  comp.threshold.value = -16;
+  comp.knee.value = 12;
+  comp.ratio.value = 3;
+  comp.attack.value = 0.004;
+  comp.release.value = 0.25;
+  const master = ac.createGain();
+  master.gain.value = 0.8;
+  master.connect(comp);
+  comp.connect(ac.destination);
+
+  function makeIR(secs, decay) {
+    const sr = ac.sampleRate;
+    const len = Math.floor(sr * secs);
+    const buf = ac.createBuffer(2, len, sr);
+    for (let c = 0; c < 2; c++) {
+      const d = buf.getChannelData(c);
+      for (let i = 0; i < len; i++) {
+        d[i] = (rnd() * 2 - 1) * Math.pow(1 - i / len, decay);
+      }
+    }
+    return buf;
+  }
+
+  const conv = ac.createConvolver();
+  conv.buffer = makeIR(3.2, 2.8);
+  const revOut = ac.createGain();
+  revOut.gain.value = 0.5;
+  conv.connect(revOut);
+  revOut.connect(master);
+
+  const noiseBuf = ac.createBuffer(1, Math.floor(ac.sampleRate * 0.5), ac.sampleRate);
+  {
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = rnd() * 2 - 1;
+  }
+
+  function pluck(t, midi, dur, vel, pan) {
+    const f = mtof(midi);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vel, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(vel * 0.35, t + dur * 0.25);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+    const lp = ac.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.Q.value = 1.2;
+    lp.frequency.setValueAtTime(Math.min(f * 10, 12000), t);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(f * 1.5, 200), t + dur);
+
+    const pn = ac.createStereoPanner();
+    pn.pan.value = Math.max(-1, Math.min(1, pan));
+
+    const o1 = ac.createOscillator();
+    o1.type = "triangle";
+    o1.frequency.value = f;
+    o1.detune.value = (rnd() - 0.5) * 8;
+    const o2 = ac.createOscillator();
+    o2.type = "sine";
+    o2.frequency.value = f * 2;
+    o2.detune.value = (rnd() - 0.5) * 6;
+    const o2g = ac.createGain();
+    o2g.gain.value = 0.18;
+
+    o1.connect(g);
+    o2.connect(o2g);
+    o2g.connect(g);
+    g.connect(lp);
+    lp.connect(pn);
+    pn.connect(master);
+
+    const send = ac.createGain();
+    send.gain.value = 0.55;
+    pn.connect(send);
+    send.connect(conv);
+
+    o1.start(t);
+    o2.start(t);
+    o1.stop(t + dur + 0.05);
+    o2.stop(t + dur + 0.05);
+
+    // harpsichord-like click
+    const src = ac.createBufferSource();
+    src.buffer = noiseBuf;
+    const bp = ac.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = Math.min(f * 6, 9000);
+    bp.Q.value = 3;
+    const cg = ac.createGain();
+    cg.gain.setValueAtTime(vel * 0.5, t);
+    cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.02);
+    src.connect(bp);
+    bp.connect(cg);
+    cg.connect(master);
+    src.start(t, 0, 0.05);
+  }
+
+  function bass(t, midi, dur, vel) {
+    const f = mtof(midi);
+    const o = ac.createOscillator();
+    o.type = "sawtooth";
+    o.frequency.value = f;
+    const lp = ac.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.Q.value = 4;
+    lp.frequency.setValueAtTime(f * 5, t);
+    lp.frequency.exponentialRampToValueAtTime(f * 1.2, t + dur);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vel, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(lp);
+    lp.connect(g);
+    g.connect(master);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  }
+
+  function pad(t, midis, len) {
+    const out = ac.createGain();
+    out.gain.value = 1;
+    const sendG = ac.createGain();
+    sendG.gain.value = 0.7;
+    out.connect(master);
+    out.connect(sendG);
+    sendG.connect(conv);
+    midis.forEach((m) => {
+      [-9, 9].forEach((det) => {
+        const o = ac.createOscillator();
+        o.type = "sawtooth";
+        o.frequency.value = mtof(m);
+        o.detune.value = det + (rnd() - 0.5) * 5;
+        const lp = ac.createBiquadFilter();
+        lp.type = "lowpass";
+        lp.frequency.value = 1100;
+        lp.Q.value = 0.8;
+        const g = ac.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.03, t + 0.35);
+        g.gain.exponentialRampToValueAtTime(0.02, t + len * 0.6);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+        o.connect(lp);
+        lp.connect(g);
+        g.connect(out);
+        o.start(t);
+        o.stop(t + len + 0.1);
+      });
+    });
+  }
+
+  function tick(t, accent, pan) {
+    const src = ac.createBufferSource();
+    src.buffer = noiseBuf;
+    const hp = ac.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 6500;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(accent ? 0.06 : 0.025, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
+    const pn = ac.createStereoPanner();
+    pn.pan.value = Math.max(-1, Math.min(1, pan));
+    src.connect(hp);
+    hp.connect(g);
+    g.connect(pn);
+    pn.connect(master);
+    src.start(t, rnd() * 0.4, 0.06);
+  }
+
+  // ---------- Score ----------
+  const events = []; // visual record, times relative to t0
+  ENTRIES.forEach((en) => {
+    let off = 0;
+    SUBJECT.forEach(([m, d]) => {
+      const beatT = en.beat + off;
+      const midi = m + en.tr + en.oct;
+      const t = t0 + beatT * BEAT;
+      const dur = d * BEAT * 1.15;
+      const vel = en.vel * (0.85 + 0.3 * rnd());
+      pluck(t, midi, dur, vel, en.pan + (rnd() - 0.5) * 0.2);
+      events.push({ t: beatT * BEAT, midi, dur, vel, voice: en.voice });
+      off += d;
+    });
+  });
+  events.sort((a, b) => a.t - b.t);
+
+  for (let b = 0; b <= 22; b++) {
+    const root = BASS_ROOTS[Math.floor(b / 4)];
+    const midi = root + (b % 2 ? 12 : 0);
+    bass(t0 + b * BEAT, midi, BEAT * 0.9, 0.2 + (b % 4 === 0 ? 0.06 : 0));
+  }
+
+  for (let k = 0; k <= 45; k++) {
+    const beatT = k * 0.5;
+    if (beatT > CHORD_BEAT) break;
+    tick(t0 + beatT * BEAT, k % 2 === 0, (k % 4 < 2 ? -0.4 : 0.4) + (rnd() - 0.5) * 0.3);
+  }
+
+  const chordT = t0 + CHORD_BEAT * BEAT;
+  pad(chordT, [50, 57, 62, 66, 69], 2.4);
+  bass(chordT, 38, 2.4, 0.22);
+
+  const byVoice = [[], [], [], []];
+  events.forEach((e) => byVoice[e.voice].push(e));
+
+  // ---------- Visual ----------
+  const cv = canvas;
+  const g2 = cv.getContext("2d");
+  const W = cv.width;
+  const H = cv.height;
+  const S = W / 1080;
+  const cx = W / 2;
+  const cy = H * 0.5;
+
+  const stars = [];
+  for (let i = 0; i < 260; i++) {
+    stars.push({
+      x: rnd(), y: rnd(),
+      r: 0.4 + rnd() * 1.4,
+      ph: rnd() * Math.PI * 2,
+      sp: 0.6 + rnd() * 2.2,
+    });
+  }
+
+  function posOf(e, now) {
+    const pc = ((e.midi % 12) + 12) % 12;
+    const dir = e.voice % 2 === 0 ? 1 : -1;
+    const ang = PC_ANG(pc) + e.voice * 0.09 + dir * now * 0.07;
+    const rad = (RING_R[e.voice] + (e.midi - 62) * 0.9) * S;
+    return [cx + Math.cos(ang) * rad, cy + Math.sin(ang) * rad];
+  }
+
+  function draw(now) {
+    const beatPh = (now / BEAT) % 1;
+    const kick = Math.exp(-beatPh * 6);
+
+    // background
+    const bg = g2.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, "#06050c");
+    bg.addColorStop(1, "#140b1c");
+    g2.fillStyle = bg;
+    g2.fillRect(0, 0, W, H);
+
+    // stars
+    for (const s of stars) {
+      const a = Math.max(0, 0.12 + 0.12 * Math.sin(now * s.sp + s.ph));
+      g2.fillStyle = `rgba(255,236,210,${a})`;
+      g2.beginPath();
+      g2.arc(s.x * W, s.y * H, s.r * S, 0, Math.PI * 2);
+      g2.fill();
+    }
+
+    // central glow pulsing on the beat
+    const sunR = (46 + 30 * kick) * S;
+    const glow = g2.createRadialGradient(cx, cy, 0, cx, cy, sunR * 7);
+    glow.addColorStop(0, `rgba(255,186,110,${0.30 + 0.22 * kick})`);
+    glow.addColorStop(0.3, `rgba(170,60,70,${0.10 + 0.08 * kick})`);
+    glow.addColorStop(1, "rgba(0,0,0,0)");
+    g2.fillStyle = glow;
+    g2.fillRect(0, 0, W, H);
+
+    // orbit rings
+    g2.lineWidth = 1 * S;
+    for (let v = 0; v < 4; v++) {
+      const c = VOICE_COL[v];
+      g2.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},0.10)`;
+      g2.beginPath();
+      g2.arc(cx, cy, RING_R[v] * S, 0, Math.PI * 2);
+      g2.stroke();
+    }
+
+    // counterpoint threads: last nine notes of each voice
+    for (let v = 0; v < 4; v++) {
+      const arr = byVoice[v];
+      let n = 0;
+      while (n < arr.length && arr[n].t <= now) n++;
+      if (n < 2) continue;
+      const hist = arr.slice(Math.max(0, n - 9), n);
+      const age = now - hist[hist.length - 1].t;
+      const fade = Math.max(0.3, Math.exp(-age * 0.12));
+      const c = VOICE_COL[v];
+      g2.beginPath();
+      hist.forEach((e, i) => {
+        const p = posOf(e, now);
+        if (i === 0) g2.moveTo(p[0], p[1]);
+        else g2.lineTo(p[0], p[1]);
+      });
+      g2.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${0.22 * fade})`;
+      g2.lineWidth = 6 * S;
+      g2.stroke();
+      g2.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${0.7 * fade})`;
+      g2.lineWidth = 1.4 * S;
+      g2.stroke();
+    }
+
+    // constellation between sounding notes
+    const sounding = [];
+    for (const e of events) {
+      if (e.t > now) break;
+      if (now - e.t < e.dur) sounding.push(posOf(e, now));
+    }
+    g2.lineWidth = 1 * S;
+    const maxD = 300 * S;
+    for (let i = 0; i < sounding.length; i++) {
+      for (let j = i + 1; j < sounding.length; j++) {
+        const dx = sounding[i][0] - sounding[j][0];
+        const dy = sounding[i][1] - sounding[j][1];
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < maxD) {
+          g2.strokeStyle = `rgba(255,230,200,${0.18 * (1 - d / maxD)})`;
+          g2.beginPath();
+          g2.moveTo(sounding[i][0], sounding[i][1]);
+          g2.lineTo(sounding[j][0], sounding[j][1]);
+          g2.stroke();
+        }
+      }
+    }
+
+    // lamps (note heads)
+    for (const e of events) {
+      if (e.t > now) break;
+      const age = now - e.t;
+      if (age > e.dur + 1.2) continue;
+      const [x, y] = posOf(e, now);
+      const k = Math.exp(-age * 5);
+      const r = (3 + e.vel * 12 + 14 * k) * S;
+      const alpha = age < e.dur ? 1 : Math.exp(-(age - e.dur) * 2.8);
+      const c = VOICE_COL[e.voice];
+      const halo = g2.createRadialGradient(x, y, 0, x, y, r * 4);
+      halo.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${0.55 * alpha})`);
+      halo.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
+      g2.fillStyle = halo;
+      g2.beginPath();
+      g2.arc(x, y, r * 4, 0, Math.PI * 2);
+      g2.fill();
+      g2.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${alpha})`;
+      g2.beginPath();
+      g2.arc(x, y, r, 0, Math.PI * 2);
+      g2.fill();
+      g2.fillStyle = `rgba(255,250,240,${alpha})`;
+      g2.beginPath();
+      g2.arc(x, y, r * 0.5, 0, Math.PI * 2);
+      g2.fill();
+    }
+
+    // bass sun core and pulse ring
+    g2.fillStyle = `rgba(255,214,150,${0.45 + 0.4 * kick})`;
+    g2.beginPath();
+    g2.arc(cx, cy, sunR * 0.35, 0, Math.PI * 2);
+    g2.fill();
+    g2.strokeStyle = `rgba(255,200,140,${0.25 * kick})`;
+    g2.lineWidth = 2 * S;
+    g2.beginPath();
+    g2.arc(cx, cy, sunR * 1.6, 0, Math.PI * 2);
+    g2.stroke();
+
+    // final chord flare
+    const cT = CHORD_BEAT * BEAT;
+    if (now > cT) {
+      const dt = now - cT;
+      const fl = Math.exp(-dt * 1.1);
+      g2.strokeStyle = `rgba(255,220,170,${0.5 * fl})`;
+      g2.lineWidth = 3 * S;
+      g2.beginPath();
+      g2.arc(cx, cy, dt * 720 * S, 0, Math.PI * 2);
+      g2.stroke();
+      g2.fillStyle = `rgba(255,200,140,${0.22 * fl})`;
+      g2.fillRect(0, 0, W, H);
+    }
+
+    // caption
+    g2.fillStyle = "rgba(240,226,200,0.55)";
+    g2.font = `${26 * S}px Georgia, serif`;
+    g2.textAlign = "center";
+    g2.fillText("RICERCAR OF LAMPS", cx, H - 70 * S);
+
+    // closing fade to black
+    const fadeStart = duration - 0.6;
+    if (now > fadeStart) {
+      const fo = Math.min(1, (now - fadeStart) / 0.6);
+      g2.fillStyle = `rgba(0,0,0,${fo})`;
+      g2.fillRect(0, 0, W, H);
+    }
+  }
+
+  // ---------- Loop ----------
+  let stopped = false;
+  let handle = 0;
+  const schedule = (fn) => {
+    if (typeof requestAnimationFrame === "function") return requestAnimationFrame(fn);
+    return setTimeout(fn, 1000 / 60);
+  };
+  const cancel = (h) => {
+    if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(h);
+    clearTimeout(h);
+  };
+
+  function frame() {
+    if (stopped) return;
+    const now = Math.max(0, ac.currentTime - t0);
+    draw(now);
+    if (now < duration + 0.2) handle = schedule(frame);
+  }
+  frame();
+
+  return () => {
+    stopped = true;
+    cancel(handle);
+    try { master.disconnect(); } catch (e) { /* ignore */ }
+  };
+}

@@ -1,0 +1,800 @@
+```js
+export const title = "Rosace — one four-note seed at four speeds";
+
+/*
+  A fractal canon in D minor. One cell (root, third, second, fifth) is played at four
+  nested time-scales: every bass note contains the whole cell in the tenor, every tenor
+  note contains it again in the bells, and in the last bar every bell note contains it once
+  more as a glitter of grace notes. The harmony (i - III - ii° - V) is the cell itself.
+  The final chord is a Picardy third: the theme, turned major, is squeezed into one flourish.
+
+  The rose window is the score: one revolution = the piece, three rings = three speeds,
+  hue = pitch, and each pane carries a medallion in the colour of the note that contains it.
+*/
+
+export function start({ audioContext, canvas, duration, random }) {
+  const ac = audioContext;
+  const rnd = typeof random === "function" ? random : Math.random;
+  const perf = typeof performance !== "undefined" ? performance : null;
+  const p0 = perf ? perf.now() : 0;
+  const tStart = ac.currentTime;
+  const DUR = duration > 0 ? duration : 15;
+  const K = DUR / 15;
+  const TAU = Math.PI * 2;
+  const A0 = -Math.PI / 2;
+  const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+  /* ------------------------------ SCORE ------------------------------ */
+  const CELL = [0, 2, 1, 4];
+  const MINOR = [0, 2, 3, 5, 7, 8, 10];
+  const MAJOR = [0, 2, 4, 5, 7, 9, 11];
+  const semi = (d, bar, major) => {
+    const k = ((d % 7) + 7) % 7;
+    const o = (d - k) / 7;
+    let s = (major ? MAJOR : MINOR)[k];
+    if (!major && bar === 3 && k === 6) s += 1; // leading tone over the dominant
+    return 12 * o + s;
+  };
+  const hz = (s) => 293.6648 * Math.pow(2, s / 12); // semitones from D4
+  const S16 = 0.18 * K, LEAD = 0.26 * K, RIT = 0.035;
+  const pos2t = (p) => LEAD + S16 * (p <= 56 ? p : p + RIT * (p - 56) * (p - 56));
+  const TF = pos2t(64) + 0.05 * K; // final chord
+  const TS = TF + 0.07 * K; // flourish start
+  const flT = [];
+  let TA = TS;
+  for (let j = 0; j < 16; j++) { flT.push(TA); TA += (0.058 - 0.0012 * j) * K; }
+  TA += 0.03 * K; // arrival of the last note
+
+  const PAL = [
+    [38, 92, 255],   // D  cobalt
+    [146, 72, 245],  // E  violet
+    [24, 196, 120],  // F  emerald
+    [30, 178, 226],  // G  aqua
+    [238, 38, 66],   // A  ruby
+    [255, 128, 28],  // Bb amber
+    [246, 200, 52],  // C  gold
+  ];
+  const ROSE = [255, 84, 176]; // C#
+  const colOf = (d, bar) => { const k = ((d % 7) + 7) % 7; return bar === 3 && k === 6 ? ROSE : PAL[k]; };
+  const mixW = (c, w) => [c[0] + (255 - c[0]) * w, c[1] + (255 - c[1]) * w, c[2] + (255 - c[2]) * w];
+  const rgb = (c, m = 1, a = 1) =>
+    "rgba(" + Math.min(255, Math.round(c[0] * m)) + "," + Math.min(255, Math.round(c[1] * m)) + "," +
+    Math.min(255, Math.round(c[2] * m)) + "," + a + ")";
+  const ints = (c) => [Math.round(c[0]), Math.round(c[1]), Math.round(c[2])];
+
+  const tops = [];
+  for (let p = 0; p < 64; p++) {
+    const bar = p >> 4, deg = CELL[bar] + CELL[(p >> 2) & 3] + CELL[p & 3];
+    const col = colOf(deg, bar);
+    tops.push({ t: pos2t(p), deg, bar, f: hz(12 + semi(deg, bar)), col, lite: ints(mixW(col, 0.35)) });
+  }
+  const mids = [];
+  for (let i = 0; i < 16; i++) {
+    const bar = i >> 2, deg = CELL[bar] + CELL[i & 3], t = pos2t(i * 4);
+    mids.push({ t, d: pos2t(i * 4 + 4) - t, deg, bar, f: hz(semi(deg, bar)), col: colOf(deg, bar) });
+  }
+  const basses = [];
+  for (let i = 0; i < 4; i++) {
+    const deg = CELL[i], t = pos2t(i * 16);
+    basses.push({ t, d: pos2t(i * 16 + 16) - t, deg, f: hz(semi(deg, i) - 24), col: colOf(deg, i) });
+  }
+  const shims = [];
+  for (let q = 0; q < 64; q++) {
+    const deg = 4 + CELL[(q >> 4) & 3] + CELL[(q >> 2) & 3] + CELL[q & 3];
+    shims.push({ t: pos2t(48 + q / 4), deg, f: hz(12 + semi(deg, 3)), col: colOf(deg, 3) });
+  }
+
+  /* --------------------------- VISUAL SETUP --------------------------- */
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height, SX = W / 1080, SY = H / 1350;
+  const doc = canvas.ownerDocument || (typeof document !== "undefined" ? document : null);
+  const mk = (w, h) => {
+    if (doc && doc.createElement) { const c = doc.createElement("canvas"); c.width = w; c.height = h; return c; }
+    return new OffscreenCanvas(w, h);
+  };
+  const CX = 540, CY = 548, GS = 1040, GH = 520, FLOOR = 1122, RB = 490;
+  const P = (r, a) => [r * Math.cos(a), r * Math.sin(a)];
+  const circ = (x, y, r) => { const p = new Path2D(); p.arc(x, y, r, 0, TAU); return p; };
+  const sector = (ra, rb, aa, ab) => {
+    const p = new Path2D(); p.arc(0, 0, rb, aa, ab); p.arc(0, 0, ra, ab, aa, true); p.closePath(); return p;
+  };
+  function panePath(r0, r1, a0, a1, gap, shoulder, pointed) {
+    const p = new Path2D();
+    const am = (a0 + a1) / 2, rs = r1 - shoulder;
+    const aL0 = a0 + gap / r0, aR0 = a1 - gap / r0, aLs = a0 + gap / rs, aRs = a1 - gap / rs;
+    let q = P(r0, aL0); p.moveTo(q[0], q[1]);
+    q = P(rs, aLs); p.lineTo(q[0], q[1]);
+    if (pointed) {
+      const rc = rs + shoulder * 0.62;
+      let c = P(rc, aLs), e = P(r1, am);
+      p.quadraticCurveTo(c[0], c[1], e[0], e[1]);
+      c = P(rc, aRs); e = P(rs, aRs);
+      p.quadraticCurveTo(c[0], c[1], e[0], e[1]);
+    } else {
+      const rc = rs + shoulder / 0.75;
+      const c1 = P(rc, aLs), c2 = P(rc, aRs), e = P(rs, aRs);
+      p.bezierCurveTo(c1[0], c1[1], c2[0], c2[1], e[0], e[1]);
+    }
+    q = P(r0, aR0); p.lineTo(q[0], q[1]);
+    p.arc(0, 0, r0, aR0, aL0, true);
+    p.closePath();
+    return p;
+  }
+
+  // pane table: 0..63 bells, 64..79 tenor, 80..83 bass, 84 hub, 85..100 roundels, 101..104 big roundels, 105.. jewels
+  const IM = 64, IB = 80, IH = 84, IRM = 85, IRB = 101, IJ = 105;
+  const panes = [];
+  for (let p = 0; p < 64; p++) {
+    const a0 = A0 + (p * TAU) / 64, a1 = a0 + TAU / 64;
+    panes.push({ path: panePath(340, 432, a0, a1, 3.2, 17, false), inner: panePath(347, 424, a0, a1, 8.6, 11, false), col: tops[p].col, a0, a1 });
+  }
+  for (let i = 0; i < 16; i++) {
+    const a0 = A0 + (i * TAU) / 16, a1 = a0 + TAU / 16;
+    panes.push({ path: panePath(204, 328, a0, a1, 5, 52, true), inner: panePath(214, 312, a0, a1, 13.5, 42, true), col: mids[i].col, a0, a1 });
+  }
+  for (let i = 0; i < 4; i++) {
+    const a0 = A0 + (i * TAU) / 4, a1 = a0 + TAU / 4;
+    panes.push({ path: panePath(64, 194, a0, a1, 7, 80, true), inner: panePath(76, 175, a0, a1, 18, 64, true), col: basses[i].col, a0, a1 });
+  }
+  const GOLD = [255, 205, 96];
+  panes.push({ path: circ(0, 0, 46), col: GOLD });
+  for (let i = 0; i < 16; i++) {
+    const q = P(313, A0 + (i * TAU) / 16);
+    panes.push({ path: circ(q[0], q[1], 12.5), col: mids[i].col, x: q[0], y: q[1], r: 12.5 });
+  }
+  for (let i = 0; i < 4; i++) {
+    const q = P(170, A0 + (i * TAU) / 4);
+    panes.push({ path: circ(q[0], q[1], 25), col: basses[i].col, x: q[0], y: q[1], r: 25 });
+  }
+  for (let j = 0; j < 256; j++) {
+    const bar = j >> 6, deg = CELL[bar] + CELL[(j >> 4) & 3] + CELL[(j >> 2) & 3] + CELL[j & 3];
+    const q = P(451, A0 + ((j + 0.5) * TAU) / 256);
+    panes.push({ path: circ(q[0], q[1], 3.3), col: colOf(deg, bar), x: q[0], y: q[1], r: 3.3 });
+  }
+  const N = panes.length;
+  for (let i = 0; i < N; i++) panes[i].flash = rgb(mixW(panes[i].col, 0.62));
+
+  // --- the fully lit glass, painted once ---
+  const glassC = mk(GS, GS);
+  const gx = glassC.getContext("2d");
+  gx.translate(GH, GH);
+  const LEADC = "rgba(10,6,12,0.82)";
+  const medal = (x, y, rad, col) => {
+    const gr = gx.createRadialGradient(x, y, 0, x, y, rad);
+    gr.addColorStop(0, rgb(mixW(col, 0.78)));
+    gr.addColorStop(1, rgb(mixW(col, 0.08)));
+    const c = circ(x, y, rad);
+    gx.fillStyle = gr; gx.fill(c);
+    gx.strokeStyle = LEADC; gx.lineWidth = 1.5; gx.stroke(c);
+  };
+  const paintPane = (pn, r0, r1, nr, na) => {
+    const am = (pn.a0 + pn.a1) / 2, c0 = P((r0 + r1) / 2, am);
+    gx.fillStyle = rgb(pn.col, 0.5); gx.fill(pn.path);
+    const gr = gx.createRadialGradient(c0[0], c0[1], 0, c0[0], c0[1], (r1 - r0) * 0.8);
+    gr.addColorStop(0, rgb(mixW(pn.col, 0.4)));
+    gr.addColorStop(1, rgb(pn.col, 0.95));
+    gx.fillStyle = gr; gx.fill(pn.inner);
+    gx.save(); gx.clip(pn.inner);
+    const da = (pn.a1 - pn.a0) / na, dr = (r1 - r0) / nr;
+    for (let i = 0; i < nr; i++) for (let j = 0; j < na; j++) {
+      gx.fillStyle = rnd() < 0.5
+        ? "rgba(255,255,255," + (0.04 + rnd() * 0.2).toFixed(3) + ")"
+        : "rgba(0,0,24," + (0.04 + rnd() * 0.24).toFixed(3) + ")";
+      gx.fill(sector(r0 + i * dr, r0 + (i + 1) * dr, pn.a0 + j * da, pn.a0 + (j + 1) * da));
+    }
+    gx.strokeStyle = LEADC; gx.lineWidth = 1.3;
+    for (let i = 1; i < nr; i++) { gx.beginPath(); gx.arc(0, 0, r0 + i * dr, pn.a0, pn.a1); gx.stroke(); }
+    for (let j = 1; j < na; j++) {
+      const a = pn.a0 + j * da, q0 = P(r0, a), q1 = P(r1, a);
+      gx.beginPath(); gx.moveTo(q0[0], q0[1]); gx.lineTo(q1[0], q1[1]); gx.stroke();
+    }
+    gx.restore();
+    gx.strokeStyle = LEADC; gx.lineWidth = 1.5; gx.stroke(pn.inner);
+  };
+  for (let p = 0; p < 64; p++) {
+    const pn = panes[p];
+    paintPane(pn, 347, 424, 2, 1);
+    const q = P(394, (pn.a0 + pn.a1) / 2);
+    medal(q[0], q[1], 4.8, mids[p >> 2].col); // each bell pane carries its tenor note
+  }
+  for (let i = 0; i < 16; i++) {
+    const pn = panes[IM + i];
+    paintPane(pn, 214, 312, 3, 2);
+    const q = P(258, (pn.a0 + pn.a1) / 2);
+    medal(q[0], q[1], 17, basses[i >> 2].col); // each tenor pane carries its bass note
+  }
+  for (let i = 0; i < 4; i++) {
+    const pn = panes[IB + i];
+    paintPane(pn, 76, 175, 3, 4);
+    const q = P(124, (pn.a0 + pn.a1) / 2);
+    medal(q[0], q[1], 25, GOLD);
+    medal(q[0], q[1], 9, [255, 240, 200]);
+  }
+  for (let k = 0; k < 8; k++) {
+    gx.fillStyle = k & 1 ? "rgb(255,238,176)" : "rgb(255,188,66)";
+    gx.fill(sector(0, 46, A0 + (k * TAU) / 8, A0 + ((k + 1) * TAU) / 8));
+  }
+  gx.strokeStyle = LEADC; gx.lineWidth = 1.3;
+  for (let k = 0; k < 8; k++) {
+    const q = P(46, A0 + (k * TAU) / 8);
+    gx.beginPath(); gx.moveTo(0, 0); gx.lineTo(q[0], q[1]); gx.stroke();
+  }
+  medal(0, 0, 17, [255, 226, 150]);
+  for (let i = IRM; i < IJ; i++) {
+    const pn = panes[i];
+    medal(pn.x, pn.y, pn.r, pn.col);
+    if (i >= IRB) medal(pn.x, pn.y, 9, mixW(pn.col, 0.5));
+  }
+  for (let i = IJ; i < N; i++) {
+    const pn = panes[i];
+    gx.fillStyle = rgb(mixW(pn.col, 0.4)); gx.fill(pn.path);
+  }
+  gx.globalCompositeOperation = "source-atop";
+  for (let i = 0; i < 2600; i++) {
+    const r = 470 * Math.sqrt(rnd()), a = rnd() * TAU;
+    gx.fillStyle = rnd() < 0.5
+      ? "rgba(255,255,255," + (0.02 + rnd() * 0.06).toFixed(3) + ")"
+      : "rgba(0,0,0," + (0.03 + rnd() * 0.09).toFixed(3) + ")";
+    gx.beginPath(); gx.arc(r * Math.cos(a), r * Math.sin(a), 2 + rnd() * rnd() * 22, 0, TAU); gx.fill();
+  }
+  gx.globalCompositeOperation = "source-over";
+
+  // --- static stone: wall, floor, tracery ---
+  const bgC = mk(W, H);
+  const bx = bgC.getContext("2d");
+  bx.scale(SX, SY);
+  {
+    let g = bx.createLinearGradient(0, 0, 0, 1350);
+    g.addColorStop(0, "#0a0910"); g.addColorStop(0.8, "#0d0b13"); g.addColorStop(1, "#08070c");
+    bx.fillStyle = g; bx.fillRect(0, 0, 1080, 1350);
+    bx.lineWidth = 1;
+    for (let row = 0, y = -24; y < FLOOR; y += 78, row++) {
+      bx.strokeStyle = "rgba(0,0,0,0.5)";
+      bx.beginPath(); bx.moveTo(0, y); bx.lineTo(1080, y); bx.stroke();
+      bx.strokeStyle = "rgba(255,255,255,0.028)";
+      bx.beginPath(); bx.moveTo(0, y + 1.5); bx.lineTo(1080, y + 1.5); bx.stroke();
+      for (let x = (row % 2) * 85 - 40 + rnd() * 12; x < 1080; x += 170) {
+        bx.strokeStyle = "rgba(0,0,0,0.45)";
+        bx.beginPath(); bx.moveTo(x, y); bx.lineTo(x, y + 78); bx.stroke();
+        bx.strokeStyle = "rgba(255,255,255,0.022)";
+        bx.beginPath(); bx.moveTo(x + 1.5, y); bx.lineTo(x + 1.5, y + 78); bx.stroke();
+      }
+    }
+    for (let i = 0; i < 6000; i++) {
+      bx.fillStyle = rnd() < 0.5 ? "rgba(255,255,255,0.022)" : "rgba(0,0,0,0.14)";
+      bx.fillRect(rnd() * 1080, rnd() * 1350, 1 + rnd() * 2, 1 + rnd() * 2);
+    }
+    g = bx.createLinearGradient(0, FLOOR, 0, 1350);
+    g.addColorStop(0, "#09080d"); g.addColorStop(1, "#020203");
+    bx.fillStyle = g; bx.fillRect(0, FLOOR, 1080, 1350 - FLOOR);
+    for (let i = -10; i <= 10; i++) {
+      const x0 = 540 + i * 62, x1 = 540 + i * 62 * 2.15;
+      bx.strokeStyle = "rgba(0,0,0,0.55)";
+      bx.beginPath(); bx.moveTo(x0, FLOOR); bx.lineTo(x1, 1350); bx.stroke();
+      bx.strokeStyle = "rgba(255,255,255,0.02)";
+      bx.beginPath(); bx.moveTo(x0 + 1.5, FLOOR); bx.lineTo(x1 + 2.5, 1350); bx.stroke();
+    }
+    for (let k = 1; k <= 5; k++) {
+      const y = FLOOR + 228 * Math.pow(k / 5.2, 1.7);
+      bx.strokeStyle = "rgba(0,0,0,0.55)";
+      bx.beginPath(); bx.moveTo(0, y); bx.lineTo(1080, y); bx.stroke();
+    }
+    bx.fillStyle = "#07060a"; bx.fillRect(0, FLOOR - 12, 1080, 12);
+    bx.fillStyle = "rgba(255,255,255,0.045)"; bx.fillRect(0, FLOOR - 12, 1080, 1);
+    bx.fillStyle = "rgba(0,0,0,0.7)"; bx.fillRect(0, FLOOR, 1080, 2);
+
+    bx.translate(CX, CY);
+    g = bx.createRadialGradient(0, 0, 440, 0, 0, 500);
+    g.addColorStop(0, "#15131b"); g.addColorStop(0.75, "#1e1b26"); g.addColorStop(1, "#0d0c12");
+    bx.beginPath(); bx.arc(0, 0, 487, 0, TAU); bx.fillStyle = g; bx.fill();
+    bx.strokeStyle = "rgba(255,255,255,0.075)"; bx.lineWidth = 1.5; bx.beginPath(); bx.arc(0, 0, 487, 0, TAU); bx.stroke();
+    bx.strokeStyle = "rgba(0,0,0,0.6)"; bx.lineWidth = 3; bx.beginPath(); bx.arc(0, 0, 477, 0, TAU); bx.stroke();
+    bx.strokeStyle = "rgba(255,255,255,0.05)"; bx.lineWidth = 1.2; bx.beginPath(); bx.arc(0, 0, 469, 0, TAU); bx.stroke();
+    bx.beginPath(); bx.arc(0, 0, 466, 0, TAU); bx.fillStyle = "#110f16"; bx.fill();
+    bx.lineWidth = 1;
+    for (let i = 0; i < N; i++) {
+      bx.fillStyle = "#020205"; bx.fill(panes[i].path);
+      bx.strokeStyle = "rgba(255,255,255,0.06)"; bx.stroke(panes[i].path);
+    }
+  }
+
+  const litC = mk(GS, GS), lx = litC.getContext("2d");
+  const blC = [mk(520, 520), mk(260, 260), mk(130, 130), mk(65, 65)];
+  const blX = blC.map((c) => { const x = c.getContext("2d"); x.imageSmoothingEnabled = true; return x; });
+  const vig = ctx.createRadialGradient(540, 600, 430, 540, 600, 1010);
+  vig.addColorStop(0, "rgba(0,0,0,0)"); vig.addColorStop(1, "rgba(0,0,0,0.82)");
+  const motes = [];
+  for (let i = 0; i < 130; i++)
+    motes.push({ x: rnd() * 1080, y: rnd() * 1350, z: 0.3 + rnd(), ph: rnd() * TAU, sp: 0.3 + rnd() * 0.6, r: 0.6 + rnd() * 1.5 });
+
+  /* ------------------------------ AUDIO ------------------------------ */
+  const sr = ac.sampleRate;
+  const irBuf = (() => {
+    const len = Math.floor(sr * 3.3), buf = ac.createBuffer(2, len, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch), pre = Math.floor(sr * (0.018 + 0.005 * ch));
+      let lp = 0;
+      for (let i = pre; i < len; i++) {
+        const t = (i - pre) / sr;
+        const env = Math.exp(-t / 0.43) * (1 - Math.exp(-t / 0.012));
+        const a = 0.07 + 0.78 * Math.exp(-t / 0.55);
+        lp += (rnd() * 2 - 1 - lp) * a;
+        d[i] = lp * env;
+      }
+    }
+    return buf;
+  })();
+  const noiseBuf = (() => {
+    const len = Math.floor(sr * 2), buf = ac.createBuffer(1, len, sr), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = rnd() * 2 - 1;
+    return buf;
+  })();
+
+  const elapsed = Math.max(ac.currentTime - tStart, perf ? (perf.now() - p0) / 1000 : 0);
+  const t0 = tStart + Math.max(0.04, elapsed + 0.1 - LEAD);
+  const at = (m) => t0 + m;
+
+  const bus = ac.createGain(); bus.gain.value = 1.3;
+  const comp = ac.createDynamicsCompressor();
+  comp.threshold.value = -12; comp.knee.value = 10; comp.ratio.value = 4;
+  comp.attack.value = 0.003; comp.release.value = 0.25;
+  const out = ac.createGain(); out.gain.value = 0.6;
+  const pre = ac.createGain(); pre.gain.value = 0.5;
+  const shaper = ac.createWaveShaper();
+  {
+    const n = 2049, c = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const x = ((i / (n - 1)) * 2 - 1) * 2, a = Math.abs(x);
+      const y = a <= 0.6 ? a : 0.6 + 0.37 * Math.tanh((a - 0.6) / 0.37);
+      c[i] = x < 0 ? -y : y;
+    }
+    shaper.curve = c; shaper.oversample = "2x";
+  }
+  bus.connect(comp); comp.connect(out); out.connect(pre); pre.connect(shaper); shaper.connect(ac.destination);
+  out.gain.setValueAtTime(0.6, at(DUR - 0.95 * K));
+  out.gain.linearRampToValueAtTime(0, at(DUR - 0.12 * K));
+
+  const conv = ac.createConvolver(); conv.buffer = irBuf;
+  const revIn = ac.createGain(), revOut = ac.createGain(); revOut.gain.value = 0.55;
+  revIn.connect(conv); conv.connect(revOut); revOut.connect(bus);
+
+  const mkBus = (send, lpHz) => {
+    const g = ac.createGain();
+    let o = g;
+    if (lpHz) {
+      const f = ac.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = lpHz; f.Q.value = 0.5;
+      g.connect(f); o = f;
+    }
+    o.connect(bus);
+    const s = ac.createGain(); s.gain.value = send; o.connect(s); s.connect(revIn);
+    return g;
+  };
+  const topBus = mkBus(0.42), midBus = mkBus(0.38, 3400), bassBus = mkBus(0.14, 950), padBus = mkBus(0.5, 2400), fxBus = mkBus(0.5);
+  const panNode = (p) => {
+    if (ac.createStereoPanner) { const n = ac.createStereoPanner(); n.pan.value = p; return n; }
+    return ac.createGain();
+  };
+  const padL = panNode(-0.55), padR = panNode(0.55);
+  padL.connect(padBus); padR.connect(padBus);
+
+  const mkWave = (amps) => {
+    const n = amps.length + 1, re = new Float32Array(n), im = new Float32Array(n);
+    for (let i = 0; i < amps.length; i++) im[i + 1] = amps[i];
+    return ac.createPeriodicWave(re, im);
+  };
+  const wReed = mkWave([1, 0.5, 0.34, 0.2, 0.13, 0.08, 0.05, 0.03, 0.02]);
+  const wPipe = mkWave([1, 0.62, 0.3, 0.16, 0.1, 0.05, 0.03]);
+  const wPad = mkWave([1, 0.3, 0.14, 0.06, 0.03]);
+
+  // glass bell: FM sine (ratio 3) with a soft triangle body
+  function pluck(t, f, vel, pan, tau, bright, body) {
+    const car = ac.createOscillator(), mod = ac.createOscillator();
+    const mg = ac.createGain(), g = ac.createGain(), pn = panNode(pan);
+    car.frequency.value = f; mod.frequency.value = f * 3;
+    const dev = f * 3 * 1.8 * bright * Math.min(1, 720 / f);
+    mg.gain.setValueAtTime(dev, t); mg.gain.setTargetAtTime(dev * 0.07, t, 0.05);
+    mod.connect(mg); mg.connect(car.frequency);
+    car.connect(g);
+    const end = t + tau * 7 + 0.1;
+    if (body) {
+      const tri = ac.createOscillator(), tg = ac.createGain();
+      tri.type = "triangle"; tri.frequency.value = f; tri.detune.value = 4; tg.gain.value = 0.38;
+      tri.connect(tg); tg.connect(g); tri.start(t); tri.stop(end);
+    }
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vel, t + 0.003);
+    g.gain.setTargetAtTime(0, t + 0.003, tau);
+    g.connect(pn); pn.connect(topBus);
+    car.start(t); mod.start(t); car.stop(end); mod.stop(end);
+  }
+  // singing reed with delayed vibrato
+  function sing(t, dur, f, vel) {
+    const g = ac.createGain(), lfo = ac.createOscillator(), lg = ac.createGain();
+    const end = t + dur + 0.7;
+    lfo.frequency.value = 5.2 + rnd() * 0.5;
+    lg.gain.setValueAtTime(0, t); lg.gain.setValueAtTime(0, t + 0.1); lg.gain.linearRampToValueAtTime(10, t + 0.42);
+    lfo.connect(lg);
+    for (const dt of [-5, 6]) {
+      const o = ac.createOscillator();
+      o.setPeriodicWave(wReed); o.frequency.value = f; o.detune.value = dt;
+      lg.connect(o.detune); o.connect(g); o.start(t); o.stop(end);
+    }
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vel * 0.7, t + 0.04);
+    g.gain.linearRampToValueAtTime(vel, t + dur * 0.45);
+    g.gain.linearRampToValueAtTime(vel * 0.72, t + dur);
+    g.gain.setTargetAtTime(0, t + dur, 0.08);
+    lfo.start(t); lfo.stop(end);
+    g.connect(midBus);
+  }
+  function tone(t, dur, f, vel, wave, att, rel, dest, det) {
+    const g = ac.createGain(), o = ac.createOscillator();
+    o.setPeriodicWave(wave); o.frequency.value = f; o.detune.value = det || 0;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vel, t + att);
+    g.gain.setValueAtTime(vel, t + dur);
+    g.gain.setTargetAtTime(0, t + dur, rel);
+    o.connect(g); g.connect(dest); o.start(t); o.stop(t + dur + rel * 7 + 0.05);
+  }
+  function swell(t, f, vel, wave, att, sus, tau, dest, det) {
+    const g = ac.createGain(), o = ac.createOscillator();
+    o.setPeriodicWave(wave); o.frequency.value = f; o.detune.value = det || 0;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vel, t + att);
+    g.gain.setTargetAtTime(vel * sus, t + att, tau);
+    o.connect(g); g.connect(dest); o.start(t); o.stop(t0 + DUR + 0.5);
+    return o;
+  }
+
+  const dynP = (p) => 0.66 + 0.34 * Math.pow(p / 63, 0.85);
+
+  // bells: the cell at 16x
+  tops.forEach((n, p) => {
+    const i0 = p & 3, dyn = dynP(p);
+    const acc = i0 === 0 ? 1 : i0 === 3 ? 0.9 : 0.76;
+    pluck(at(n.t) + (rnd() - 0.5) * 0.006, n.f, 0.15 * dyn * acc * (0.94 + rnd() * 0.12),
+      [-0.5, 0.18, -0.18, 0.5][i0], 0.21 - 0.006 * n.deg, 0.75 + 0.45 * dyn, true);
+  });
+  // tenor: the cell at 4x
+  mids.forEach((n, i) => sing(at(n.t), n.d, n.f, 0.072 * dynP(i * 4 + 2)));
+  // bass: the cell itself
+  basses.forEach((n, i) => {
+    const v = 0.17 + 0.03 * i;
+    if (i < 3) {
+      tone(at(n.t), n.d, n.f, v, wPipe, 0.1, 0.14, bassBus, 0);
+      tone(at(n.t), n.d, n.f * 2, 0.05, wPipe, 0.1, 0.14, bassBus, 3);
+    } else {
+      tone(at(n.t), n.d, n.f / 2, v, wPipe, 0.1, 0.14, bassBus, 0);
+      tone(at(n.t), n.d, n.f, 0.1, wPipe, 0.1, 0.14, bassBus, 3);
+    }
+  });
+  // quiet inner harmony
+  const PADS = [[-9, -5, 0], [-9, -5, -2], [-7, -4, 0], [-7, -5, -1, 2]];
+  PADS.forEach((ch, i) => {
+    const n = basses[i], v = 0.02 * (0.78 + 0.11 * i), att = i === 0 ? 0.8 : 0.4;
+    ch.forEach((s) => {
+      tone(at(n.t), n.d, hz(s), v, wPad, att, 0.22, padL, -7);
+      tone(at(n.t), n.d, hz(s), v, wPad, att, 0.22, padR, 7);
+    });
+  });
+  // last bar: the cell at 64x, as grace-note glitter
+  shims.forEach((n, q) => {
+    if ((q & 3) === 0) return;
+    pluck(at(n.t), n.f, 0.014 + 0.05 * Math.pow(q / 63, 1.4), rnd() * 1.4 - 0.7, 0.06, 0.5, false);
+  });
+  // organ wind rising into the cadence
+  {
+    const src = ac.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    const bp = ac.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 0.9;
+    const ts = TF - 1.9 * K, g = ac.createGain();
+    bp.frequency.setValueAtTime(500, at(ts));
+    bp.frequency.exponentialRampToValueAtTime(7000, at(TF));
+    g.gain.setValueAtTime(0.0001, at(ts));
+    g.gain.exponentialRampToValueAtTime(0.06, at(TF - 0.02));
+    g.gain.setTargetAtTime(0, at(TF - 0.02), 0.03);
+    src.connect(bp); bp.connect(g); g.connect(fxBus);
+    src.start(at(ts)); src.stop(at(TF + 0.6));
+  }
+  // final chord: D major
+  {
+    const t = at(TF);
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.3);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.3, t + 0.004); g.gain.setTargetAtTime(0, t + 0.004, 0.13);
+    o.connect(g); g.connect(bus); o.start(t); o.stop(t + 1.2);
+
+    swell(t, hz(-24), 0.22, wPipe, 0.015, 0.45, 1.3, bassBus, 0);
+    swell(t, hz(-12), 0.08, wPipe, 0.015, 0.45, 1.3, bassBus, 3);
+    [-12, -5, 0, 4, 7, 12].forEach((s, i) => {
+      const v = i === 5 ? 0.018 : 0.028;
+      swell(t, hz(s), v, wPad, 0.05, 0.5, 1.4, padL, -7);
+      swell(t, hz(s), v, wPad, 0.05, 0.5, 1.4, padR, 7);
+    });
+    const lfo = ac.createOscillator(), lg = ac.createGain();
+    lfo.frequency.value = 5.4;
+    lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(11, t + 0.7);
+    lfo.connect(lg); lfo.start(t); lfo.stop(t0 + DUR + 0.5);
+    for (const dt of [-5, 6]) lg.connect(swell(t, hz(16), 0.055, wReed, 0.05, 0.45, 1.2, midBus, dt).detune);
+    swell(t, hz(12), 0.03, wReed, 0.05, 0.45, 1.2, midBus, 3);
+
+    pluck(t, hz(31), 0.1, 0.3, 0.5, 1, true);
+    pluck(t, hz(24), 0.1, -0.3, 0.5, 1, true);
+    for (let j = 0; j < 16; j++) {
+      const deg = CELL[j >> 2] + CELL[j & 3];
+      pluck(at(flT[j]), hz(12 + semi(deg, 0, true)), 0.055 + (0.06 * j) / 15, -0.6 + (1.2 * j) / 15, 0.26, 1, true);
+    }
+    pluck(at(TA), hz(28), 0.13, 0, 0.9, 1.1, true);
+    pluck(at(TA), hz(24), 0.07, -0.25, 0.9, 0.9, true);
+    pluck(at(TA), hz(36), 0.05, 0.25, 0.8, 0.8, true);
+  }
+
+  /* --------------------------- LIGHT STATE --------------------------- */
+  const B = new Float32Array(N), F = new Float32Array(N);
+  const BASE = 0.06;
+  let finLvl = 0, tutti = 0, arr = 0;
+  function lights(m) {
+    const fOn = m - TF, fin = fOn >= 0;
+    finLvl = fin ? (0.82 + 0.18 * Math.exp(-fOn / 1.2)) * (1 - Math.exp(-fOn / 0.05)) : 0;
+    tutti = fin ? 0.9 * Math.exp(-fOn / 0.22) : 0;
+    arr = m >= TA ? 0.75 * Math.exp(-(m - TA) / 0.45) : 0;
+    const swT = m - TS, swD = TA - TS;
+    for (let p = 0; p < 64; p++) {
+      const on = m - tops[p].t;
+      let b = BASE, f = 0;
+      if (on >= 0) { b = 0.48 + 0.12 * Math.exp(-on / 5) + 0.4 * Math.exp(-on / 0.26); f = Math.exp(-on / 0.075); }
+      if (fin) {
+        if (finLvl > b) b = finLvl;
+        f += tutti + arr;
+        const so = swT - (swD * p) / 64;
+        if (so >= 0) f += 0.9 * Math.exp(-so / 0.12);
+      }
+      B[p] = b; F[p] = f;
+    }
+    for (let i = 0; i < 16; i++) {
+      const n = mids[i], on = m - n.t;
+      let b = BASE, f = 0;
+      if (on >= 0) {
+        const s = on < n.d ? 1 : Math.exp(-(on - n.d) / 0.55);
+        const vib = on < n.d && on > 0.25 ? 0.05 * Math.sin(on * 33) : 0;
+        b = 0.42 + (0.53 + vib) * s;
+        f = 0.8 * Math.exp(-on / 0.13);
+      }
+      if (fin) { if (finLvl > b) b = finLvl; f += tutti + arr * 0.8; }
+      B[IM + i] = b; F[IM + i] = f; B[IRM + i] = b; F[IRM + i] = f;
+    }
+    for (let i = 0; i < 4; i++) {
+      const n = basses[i], on = m - n.t;
+      let b = BASE, f = 0;
+      if (on >= 0) {
+        const att = 1 - Math.exp(-on / 0.3), s = on < n.d ? 1 : Math.exp(-(on - n.d) / 1.0);
+        b = BASE + (0.34 + (0.56 + 0.04 * Math.sin(on * 2.2)) * s) * att;
+        f = 0.4 * Math.exp(-on / 0.35);
+      }
+      if (fin) { if (finLvl > b) b = finLvl; f += tutti + arr * 0.8; }
+      B[IB + i] = b; F[IB + i] = f; B[IRB + i] = b; F[IRB + i] = f;
+    }
+    {
+      const pr = clamp01((m - LEAD) / (TF - LEAD));
+      let b = BASE + 0.24 * pr * pr, f = 0;
+      if (fin) { b = Math.max(b, 1 - Math.exp(-fOn / 0.05)); f = tutti + arr * 1.2; }
+      B[IH] = b; F[IH] = f;
+    }
+    for (let j = 0; j < 256; j++) {
+      let tj, lvl;
+      if (j < 192) { tj = tops[j >> 2].t; lvl = 0.3; } else { tj = shims[j - 192].t; lvl = 0.85; }
+      const on = m - tj;
+      let b = BASE * 0.8, f = 0;
+      if (on >= 0) { b = lvl * (0.55 + 0.45 * Math.exp(-on / 0.35)); if (j >= 192) f = Math.exp(-on / 0.06); }
+      if (fin) {
+        const so = swT - (swD * j) / 256;
+        if (so >= 0) { b = 1; f += Math.exp(-so / 0.2); }
+        f += arr;
+      }
+      B[IJ + j] = b; F[IJ + j] = f;
+    }
+  }
+
+  /* ------------------------------ FRAME ------------------------------ */
+  function frame() {
+    const m = ac.currentTime - t0;
+    lights(m);
+    const fOn = m - TF, fin = fOn >= 0;
+    const xq = (m - LEAD) / S16;
+    let pos = xq <= 56 ? xq : 56 + (-1 + Math.sqrt(1 + 4 * RIT * (xq - 56))) / (2 * RIT);
+    pos = pos < 0 ? 0 : pos > 64 ? 64 : pos;
+
+    // lit glass = glass masked by per-pane brightness, plus white-hot flashes
+    lx.setTransform(1, 0, 0, 1, 0, 0);
+    lx.globalCompositeOperation = "source-over"; lx.globalAlpha = 1;
+    lx.clearRect(0, 0, GS, GS);
+    lx.setTransform(1, 0, 0, 1, GH, GH);
+    lx.fillStyle = "#fff";
+    for (let i = 0; i < N; i++) {
+      const v = B[i];
+      if (v > 0.004) { lx.globalAlpha = v > 1 ? 1 : v; lx.fill(panes[i].path); }
+    }
+    lx.globalAlpha = 1; lx.globalCompositeOperation = "source-in";
+    lx.setTransform(1, 0, 0, 1, 0, 0);
+    lx.drawImage(glassC, 0, 0);
+    lx.globalCompositeOperation = "lighter";
+    lx.setTransform(1, 0, 0, 1, GH, GH);
+    for (let i = 0; i < N; i++) {
+      const f = F[i];
+      if (f > 0.02) { lx.globalAlpha = (f > 1 ? 1 : f) * 0.6; lx.fillStyle = panes[i].flash; lx.fill(panes[i].path); }
+    }
+    lx.globalAlpha = 1;
+    let src = litC;
+    for (let k = 0; k < 4; k++) {
+      const s = blC[k].width;
+      blX[k].clearRect(0, 0, s, s);
+      blX[k].drawImage(src, 0, 0, s, s);
+      src = blC[k];
+    }
+
+    // ambient colour and level
+    let ar = 0, ag = 0, ab = 0, aw = 0, lv = 0;
+    const damp = fin ? Math.exp(-fOn / 0.3) : 1;
+    for (let i = 0; i < 4; i++) {
+      const w = Math.max(0, B[IB + i] - 0.42) * 1.6 * damp, c = basses[i].col;
+      ar += c[0] * w; ag += c[1] * w; ab += c[2] * w; aw += w;
+    }
+    for (let i = 0; i < 16; i++) {
+      const w = Math.max(0, B[IM + i] - 0.5) * 0.8 * damp, c = mids[i].col;
+      ar += c[0] * w; ag += c[1] * w; ab += c[2] * w; aw += w;
+    }
+    if (fin) { const w = 2.2 * finLvl; ar += 255 * w; ag += 206 * w; ab += 128 * w; aw += w; }
+    for (let i = 0; i < 84; i++) lv += B[i];
+    lv /= 84;
+    const an = aw > 0.0001 ? 1 / aw : 0;
+    const acol = [Math.round(ar * an), Math.round(ag * an), Math.round(ab * an)];
+    const aI = Math.min(1, aw / 2.2);
+
+    // camera
+    const zt = clamp01((m + 0.3) / DUR);
+    const z = 1 + 0.035 * zt * zt * (3 - 2 * zt) + (fin ? 0.014 * Math.exp(-fOn / 0.35) : 0);
+    ctx.setTransform(SX * z, 0, 0, SY * z, SX * 540 * (1 - z), SY * 600 * (1 - z));
+    ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 1;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(bgC, 0, 0, 1080, 1350);
+
+    // light on the stone
+    ctx.globalCompositeOperation = "lighter";
+    const aC = 0.2 * aI + 0.12 * tutti;
+    if (aC > 0.004) {
+      const gr = ctx.createRadialGradient(CX, CY, 120, CX, CY, 860);
+      const cs = acol[0] + "," + acol[1] + "," + acol[2];
+      gr.addColorStop(0, "rgba(" + cs + "," + aC.toFixed(3) + ")");
+      gr.addColorStop(0.55, "rgba(" + cs + "," + (aC * 0.35).toFixed(3) + ")");
+      gr.addColorStop(1, "rgba(" + cs + ",0)");
+      ctx.fillStyle = gr; ctx.fillRect(-40, -40, 1160, 1430);
+    }
+
+    // glass and bloom
+    ctx.globalCompositeOperation = "source-over";
+    ctx.drawImage(litC, CX - GH, CY - GH, GS, GS);
+    const bk = 0.9 + (fin ? 0.55 * Math.exp(-fOn / 0.5) : 0);
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = Math.min(1, 0.3 * bk); ctx.drawImage(blC[1], CX - GH, CY - GH, GS, GS);
+    ctx.globalAlpha = Math.min(1, 0.42 * bk); ctx.drawImage(blC[3], CX - GH, CY - GH, GS, GS);
+    ctx.globalAlpha = Math.min(1, 0.26 * bk); ctx.drawImage(blC[3], CX - GH * 1.22, CY - GH * 1.22, GS * 1.22, GS * 1.22);
+    ctx.globalAlpha = 1;
+
+    // rays: length = pitch, so the crown traces the melody
+    ctx.save();
+    ctx.translate(CX, CY);
+    const swT = m - TS, swD = TA - TS;
+    for (let p = 0; p < 64; p++) {
+      const n = tops[p], on = m - n.t, L = 16 + 5 * n.deg;
+      let a = 0, len = 0;
+      if (on >= 0 && on < 3) { a = 0.8 * Math.exp(-on / 0.4); len = L * (1 - Math.exp(-on / 0.035)); }
+      if (fin) {
+        const so = swT - (swD * p) / 64;
+        if (so >= 0) {
+          const ca = (0.25 + 0.6 * Math.exp(-so / 1.4)) * (0.88 + 0.12 * Math.sin(m * 5 + p));
+          if (ca > a) { a = ca; len = (L * 1.1 + 16) * (1 - Math.exp(-so / 0.07)); }
+        }
+      }
+      if (a < 0.02 || len < 1) continue;
+      const am = A0 + ((p + 0.5) * TAU) / 64, c = Math.cos(am), s = Math.sin(am);
+      const r1 = RB + len, wb = RB * 0.019, wt = r1 * 0.004, cc = n.lite;
+      const gr = ctx.createLinearGradient(c * RB, s * RB, c * r1, s * r1);
+      gr.addColorStop(0, "rgba(" + cc[0] + "," + cc[1] + "," + cc[2] + "," + Math.min(1, a).toFixed(3) + ")");
+      gr.addColorStop(1, "rgba(" + cc[0] + "," + cc[1] + "," + cc[2] + ",0)");
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.moveTo(c * RB + s * wb, s * RB - c * wb);
+      ctx.lineTo(c * r1 + s * wt, s * r1 - c * wt);
+      ctx.lineTo(c * r1 - s * wt, s * r1 + c * wt);
+      ctx.lineTo(c * RB - s * wb, s * RB + c * wb);
+      ctx.closePath(); ctx.fill();
+    }
+    // the common clock hand
+    const hA = 0.13 * clamp01((m - LEAD + 0.1) / 0.3) * (fin ? Math.exp(-fOn / 0.15) : 1);
+    if (hA > 0.004) {
+      const ang = A0 + (pos * TAU) / 64, c = Math.cos(ang), s = Math.sin(ang);
+      const gr = ctx.createLinearGradient(c * 50, s * 50, c * 464, s * 464);
+      gr.addColorStop(0, "rgba(255,236,205,0)");
+      gr.addColorStop(1, "rgba(255,236,205," + hA.toFixed(3) + ")");
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.moveTo(c * 50 + s * 0.5, s * 50 - c * 0.5);
+      ctx.lineTo(c * 464 + s * 2.2, s * 464 - c * 2.2);
+      ctx.lineTo(c * 464 - s * 2.2, s * 464 + c * 2.2);
+      ctx.lineTo(c * 50 - s * 0.5, s * 50 + c * 0.5);
+      ctx.closePath(); ctx.fill();
+    }
+    // comet of the final flourish
+    if (fin && swT >= 0 && swT < swD + 0.4) {
+      const ang = A0 + Math.min(1, swT / swD) * TAU, q = P(451, ang);
+      const ca = swT <= swD ? 0.9 : 0.9 * Math.exp(-(swT - swD) / 0.1);
+      const gr = ctx.createRadialGradient(q[0], q[1], 0, q[0], q[1], 48);
+      gr.addColorStop(0, "rgba(255,244,214," + ca.toFixed(3) + ")");
+      gr.addColorStop(0.3, "rgba(255,214,140," + (ca * 0.4).toFixed(3) + ")");
+      gr.addColorStop(1, "rgba(255,200,120,0)");
+      ctx.fillStyle = gr;
+      ctx.beginPath(); ctx.arc(q[0], q[1], 48, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+
+    // pool of light on the floor
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, FLOOR + 2, 1080, 1350 - FLOOR); ctx.clip();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.translate(CX, FLOOR);
+    ctx.scale(1.06, -0.25);
+    ctx.globalAlpha = 0.5;
+    ctx.drawImage(blC[2], -GH, CY - GH - 1046, GS, GS);
+    ctx.scale(1.05, 1.3);
+    ctx.globalAlpha = 0.24;
+    ctx.drawImage(blC[3], -GH, CY - GH - 1046, GS, GS);
+    ctx.restore();
+
+    // dust in the light
+    ctx.globalCompositeOperation = "lighter";
+    const mc = mixW(aw > 0.0001 ? acol : [200, 200, 220], 0.55);
+    ctx.fillStyle = rgb(mc);
+    const time = m + 1;
+    const push = fin ? 34 * (1 - Math.exp(-fOn / 0.7)) : 0;
+    for (let i = 0; i < motes.length; i++) {
+      const d = motes[i];
+      let x = d.x + 22 * Math.sin(time * d.sp * 0.6 + d.ph) + time * 3 * d.z;
+      let y = d.y - time * (4 + 6 * d.z) + 12 * Math.cos(time * d.sp * 0.45 + d.ph * 1.7);
+      x = ((x % 1080) + 1080) % 1080; y = ((y % 1350) + 1350) % 1350;
+      const dx = x - CX, dy = y - CY, dd = Math.sqrt(dx * dx + dy * dy) + 1;
+      if (push > 0) { x += (dx / dd) * push; y += (dy / dd) * push; }
+      const near = Math.max(0, 1 - dd / 820);
+      const a = (0.04 + lv * 0.75) * near * (0.45 + 0.55 * Math.sin(time * d.sp * 2.3 + d.ph * 3));
+      if (a > 0.01) { ctx.globalAlpha = a > 1 ? 1 : a; ctx.beginPath(); ctx.arc(x, y, d.r, 0, TAU); ctx.fill(); }
+    }
+
+    // vignette and fades
+    ctx.setTransform(SX, 0, 0, SY, 0, 0);
+    ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 1;
+    ctx.fillStyle = vig; ctx.fillRect(0, 0, 1080, 1350);
+    const fi = clamp01(1 - (m + 0.04) / 0.45);
+    const fo = clamp01((m - (DUR - 1.0)) / 0.9);
+    const dark = Math.max(fi, 0.32 * fo * fo);
+    if (dark > 0.003) { ctx.globalAlpha = dark; ctx.fillStyle = "#000"; ctx.fillRect(0, 0, 1080, 1350); ctx.globalAlpha = 1; }
+  }
+
+  const raf = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (f) => setTimeout(f, 16);
+  const caf = typeof cancelAnimationFrame === "function" ? cancelAnimationFrame : clearTimeout;
+  let alive = true, rid = 0;
+  const loop = () => {
+    if (!alive) return;
+    try { frame(); } catch (e) { /* keep the loop alive */ }
+    rid = raf(loop);
+  };
+  try { frame(); } catch (e) { /* first frame is best-effort */ }
+  rid = raf(loop);
+
+  const stop = () => {
+    alive = false;
+    try { caf(rid); } catch (e) { /* ignore */ }
+    try { shaper.disconnect(); } catch (e) { /* ignore */ }
+  };
+  stop.stop = stop;
+  stop.dispose = stop;
+  return stop;
+}
+```
