@@ -1,0 +1,25 @@
+```js
+export const title = 'Pulse fixture'
+
+export function start({ audioContext, canvas, duration }) {
+  const paint = canvas.getContext('2d')
+  const origin = audioContext.currentTime + 0.25
+  for (let second = 0; second < duration; second++) {
+    const oscillator = audioContext.createOscillator()
+    const gain = audioContext.createGain()
+    const time = origin + second
+    gain.gain.setValueAtTime(0.2, time)
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.2)
+    oscillator.connect(gain).connect(audioContext.destination)
+    oscillator.start(time)
+    oscillator.stop(time + 0.2)
+  }
+  function draw() {
+    const time = audioContext.currentTime - origin
+    paint.fillStyle = time >= 0 && time % 1 < 0.2 ? 'white' : 'black'
+    paint.fillRect(0, 0, canvas.width, canvas.height)
+    requestAnimationFrame(draw)
+  }
+  draw()
+}
+```
