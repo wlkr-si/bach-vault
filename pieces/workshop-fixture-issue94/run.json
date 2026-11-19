@@ -1,0 +1,58 @@
+{
+  "wallSeconds": {
+    "value": null,
+    "source": "hand-paste"
+  },
+  "toolReportedDurationSeconds": {
+    "value": null,
+    "source": "hand-paste"
+  },
+  "inputTokens": {
+    "value": null,
+    "source": "hand-paste"
+  },
+  "outputTokens": {
+    "value": null,
+    "source": "hand-paste"
+  },
+  "reasoningTokens": {
+    "value": null,
+    "source": "hand-paste"
+  },
+  "cachedReadTokens": {
+    "value": null,
+    "source": "hand-paste"
+  },
+  "cachedWriteTokens": {
+    "value": null,
+    "source": "hand-paste"
+  },
+  "reportedCostUsd": {
+    "value": null,
+    "source": "hand-paste"
+  },
+  "reportedModelId": {
+    "value": null,
+    "source": "hand-paste"
+  },
+  "requestedModelId": {
+    "value": null,
+    "source": "hand-paste"
+  },
+  "tool": {
+    "value": null,
+    "source": "hand-paste"
+  },
+  "toolVersion": {
+    "value": null,
+    "source": "hand-paste"
+  },
+  "effort": {
+    "value": null,
+    "source": "hand-paste"
+  },
+  "effortSetting": {
+    "value": null,
+    "source": "hand-paste"
+  }
+}
