@@ -6,6 +6,23 @@ It holds the original modules and final replies, measured data, the fixed
 The [manifest](manifest.json) records SHA-256 for every permanent file and
 media object. The original Clips and posters are kept in write-once storage.
 
+## Three repositories
+
+| Part | Responsibility |
+| --- | --- |
+| [Workshop](https://github.com/wlkr-si/bach-workshop) (private) | Runs models, records and checks the first successful Piece, keeps private run records. |
+| Vault (this repository) | Archives the original Piece, serves its media and publishes the catalogue. |
+| [Site](https://github.com/wlkr-si/bach-bench-site) | Displays the catalogue at [bach.wlkr.si](https://bach.wlkr.si). |
+
+**A feature.** Open a Site issue and a pull request. After checks and merge,
+GitHub Actions deploys the Site and verifies the live commit.
+
+**A Piece.** Run `node bench/add.mjs "<model>" --effort high` in the Workshop.
+An accepted recording goes through a Vault PR and the append-only checks.
+Once the Vault republishes its index, the Site picks up the Piece on its own.
+`node bench/withdraw.mjs withdraw <slug>` removes it from the active field.
+`node bench/withdraw.mjs restore <slug>` brings it back.
+
 ## Index contract v1
 
 Fetch [index.json](https://vault.bach.wlkr.si/index.json). `schemaVersion` is
