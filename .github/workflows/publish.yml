@@ -2,7 +2,8 @@ name: Publish Vault index
 on:
   push:
     branches: [main, 'workshop-staging-*']
-    paths: [manifest.json, withdrawn.json]
+    # The score inputs shape the published dataset, so a correction to them republishes it.
+    paths: [manifest.json, withdrawn.json, 'bench/scores/**']
 
 permissions:
   contents: read

@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { addBalance, titleWords } from '../bench/scores/balance.mjs'
 import { fieldScores } from '../bench/scores/field.mjs'
+import { prices, releases } from '../bench/scores/prices.mjs'
 import { json, mediaKey, publicOrigin, rawRecordOrigin, readJson, recordOrigin, sha256, vaultTarget } from './vault.ts'
 import type {
   Analysis, Features, FieldScores, Measurements, Metadata, Signals, Timeline, VaultDetail, VaultEntry, VaultIndex,
@@ -20,6 +21,10 @@ function readRecord(slug: string) {
       !Number.isFinite(fixed.complexity) || !Number.isFinite(fixed.sync)) {
     throw new Error('Invalid published measurements: ' + slug)
   }
+  // A release date is a fact about the model, kept with the prices. It is read from there,
+  // so a correction never rewrites a Piece's record.
+  const priced = prices[slug]
+  const release = releases[slug] ?? (priced?.releaseDate ? [priced.releaseDate, priced.releaseSource] as const : null)
   const dimensions = { palette: 384, sound: 60, structure: 96 }
   for (const key of Object.keys(dimensions) as (keyof Features)[]) {
     const values = measurement.features[key]
@@ -32,7 +37,8 @@ function readRecord(slug: string) {
     measurements: readJson<Measurements>(path + '/run.json'),
     analysis: readJson<Analysis>(path + '/analysis.json'),
     timeline: readJson<Timeline>(path + '/timeline.json'),
-    scores: { ...fixed } as Signals['measurements'] & Partial<FieldScores>,
+    scores: { ...fixed, ...(release && { releaseDate: release[0], releaseSource: release[1] }) } as
+      Signals['measurements'] & Partial<FieldScores>,
     features: { ...measurement.features, words: new Set(titleWords(fixed.title)) },
   }
 }

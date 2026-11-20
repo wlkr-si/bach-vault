@@ -1,6 +1,6 @@
 import {readFileSync, readdirSync, writeFileSync, existsSync} from 'node:fs'
 import {join} from 'node:path'
-import {prices} from './prices.mjs'
+import {prices, releases} from './prices.mjs'
 import {addBalance, titleWords} from './balance.mjs'
 
 const [root, output, mode] = process.argv.slice(2)
@@ -56,7 +56,7 @@ const records = readdirSync(root).sort().flatMap(id => {
   const [costUsd,costReason] = cost(run,p)
   return [{id, title: meta.title ?? '', model: meta.model ?? id, lab: meta.lab ?? p?.lab ?? null,
     ...(meta.effort ? {effort:meta.effort} : {}),
-    releaseDate:p?.releaseDate ?? null, releaseSource:p?.releaseSource ?? null,
+    releaseDate:p?.releaseDate ?? releases[id]?.[0] ?? null, releaseSource:p?.releaseSource ?? releases[id]?.[1] ?? null,
     costUsd,costReason,timeSeconds:run.wallSeconds?.value ?? null,
     inputTokens:run.inputTokens?.value ?? null, outputTokens:run.outputTokens?.value ?? null,
     thinkingTokens:run.reasoningTokens?.value ?? null,cachedReadTokens:run.cachedReadTokens?.value ?? null,
