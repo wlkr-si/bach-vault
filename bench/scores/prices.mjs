@@ -29,7 +29,7 @@ add('composer-2.5','Cursor','https://cursor.com/docs/models/cursor-composer-2-5'
 add('grok-4.6','xAI','https://docs.x.ai/developers/pricing',[2,6,.5],'2026-08-12','https://x.ai/news/grok-4-6')
 
 // Lineup entries without a published Piece still have a sourced price record.
-add('gemini-4-argon','Google','https://ai.google.dev/gemini-api/docs/pricing',[4,20,.2],'2026-10-13','https://blog.google/innovation-and-ai/technology/developers-tools/build-with-gemini-4-argon/')
+add('gemini-4-argon','Google','https://ai.google.dev/gemini-api/docs/pricing',[4,20,.2],'2026-09-30','https://blog.google/innovation-and-ai/models-and-research/gemini-models/gemini-4-argon/')
 add('grok-4.7','xAI','https://docs.x.ai/developers/pricing',[2,6,.5],'2026-09-21','https://x.ai/news/grok-4-7')
 add('deepseek-v4-pro','DeepSeek','https://api-docs.deepseek.com/quick_start/pricing/',[1.32,3.96,.044],'2026-08-13','https://api-docs.deepseek.com/news/news260813/')
 add('qwen4-max','Alibaba','https://modelstudio.console.alibabacloud.com/ap-southeast-1/model/market/detail/qwen4-max',[1.5,4.5,.075,1.875],'2026-11-16','https://www.alibabacloud.com/help/en/model-studio/token-plan-product-updates')
@@ -40,3 +40,21 @@ add('minimax-m3','MiniMax','https://platform.minimax.io/docs/pricing/overview',[
 add('mimo-v2.6-pro','Xiaomi','https://mimo.mi.com/docs/price',[.435,.87,.0036])
 add('muse-spark-1.3-contributor','Meta','https://dev.meta.ai/docs/pricing-rate-limits',[.1,.2,.002])
 add('nemotron-3.5-lightning','NVIDIA','https://build.nvidia.com/nvidia/nemotron-3.5-lightning-30b-a3b/modelcard',[],'2026-08-11','https://build.nvidia.com/nvidia/nemotron-3.5-lightning-30b-a3b/modelcard')
+
+// Release dates for Pieces whose run was not priced from the table above.
+// Each is the day the lab first announced the model, from the lab's own page.
+export const releases = {
+  'deepseek-v4.1-flash': ['2026-10-17', 'https://api-docs.deepseek.com/news/news261017'],
+  'gemini-3.8-flash': ['2026-09-02', 'https://blog.google/innovation-and-ai/models-and-research/gemini-models/3-8-flash-and-3-8-flash-cyber/'],
+  'gemini-4-carbon': ['2026-10-28', 'https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-gemini-4-carbon/'],
+  'gemini-4-hydrogen': ['2026-11-12', 'https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-gemini-4-hydrogen/'],
+  'gemini-4-neon': ['2026-11-18', 'https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-gemini-4-neon/'],
+  'gpt-5.3-codex': ['2026-02-05', 'https://openai.com/index/introducing-gpt-5-3-codex/'],
+  'gpt-5.4-mini': ['2026-03-17', 'https://openai.com/index/introducing-gpt-5-4-mini-and-nano/'],
+  'grok-4.7-console': ['2026-09-21', 'https://x.ai/news/grok-4-7'],
+  'kimi-k3': ['2026-07-16', 'https://www.kimi.com/code/docs/en/kimi-code/whats-new.html'],
+  'mistral-large-4': ['2026-10-06', 'https://mistral.ai/news/mistral-large-4/'],
+  'muse-ember-1.0': ['2026-11-09', 'https://research.meta.ai/blog/muse-ember'],
+  'muse-wonder-1.0': ['2026-10-12', 'https://research.meta.ai/blog/muse-wonder'],
+  'qwen3.8-flash': ['2026-08-26', 'https://www.alibabacloud.com/help/en/model-studio/newly-released-models'],
+}
