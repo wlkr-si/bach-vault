@@ -275,7 +275,14 @@
     "pieces/muse-spark-1.3-contributor/reply.txt": "6610439cda9c69b8c6304501124caff43b46c5cd10eaa6f2663273ae07a89d5f",
     "pieces/muse-spark-1.3-contributor/run.json": "695996d234023fb6c39a55b2304f4c1a867054a3e8697995d849f8b06d74d452",
     "pieces/muse-spark-1.3-contributor/signals.json": "499e4514c6efa3824e56c539d8f1c153459abde55c9f98986b4de47ae200fedb",
-    "pieces/muse-spark-1.3-contributor/timeline.json": "58ddf4d236098320765482b6a41e65cbdc1b703bf24a858e9ac8d8956020434d"
+    "pieces/muse-spark-1.3-contributor/timeline.json": "58ddf4d236098320765482b6a41e65cbdc1b703bf24a858e9ac8d8956020434d",
+    "pieces/step-5-preview/analysis.json": "4fa9710374b4e01ac7cc0c0efe1a50bee41a302c60dfde9be21fee0cb2158504",
+    "pieces/step-5-preview/meta.json": "c2f763561e87a4a7f697c7f026df2bb8b4dfb11c1380b0ce7b02f8714fb7ad44",
+    "pieces/step-5-preview/piece.js": "71e69c160272801e701edbd377d8b16ec291008ab318c0856f38751ea894c4dc",
+    "pieces/step-5-preview/reply.txt": "1bb3ded0c4af30e028d731a8e7d684b024506e44f469bf1a73fc0e60829781a6",
+    "pieces/step-5-preview/run.json": "eb824d80bef5e5622a23c1fc2be557e59a738a9f0d755ad528132b4079d77b7c",
+    "pieces/step-5-preview/signals.json": "133695911fa498f47d47bcd5c93c5bd5db2dccfe90184c6f4b7df992b4f6581a",
+    "pieces/step-5-preview/timeline.json": "f1b45621fa72caaa19899efe236afcbdc73ccff7704f569bd2c87f97859237dd"
   },
   "media": {
     "pieces/claude-fable-5-2/clip.mp4": {
@@ -813,6 +820,18 @@
     "pieces/muse-spark-1.3-contributor/poster.jpg": {
       "sha256": "cf3afb55d084853044ea11f9e96f34f64d33593ba8f52c5aab011e95669268ac",
       "size": 66786,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable"
+    },
+    "pieces/step-5-preview/clip.mp4": {
+      "sha256": "4e603d5a17657096a0e0021ed09b0f048e910b74927968497815d2bf4737d154",
+      "size": 2771340,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable"
+    },
+    "pieces/step-5-preview/poster.jpg": {
+      "sha256": "1dbbb53c55ac0e7309c0327789238c8d2fa0a1da5b0eb8c06e52bc16acd8549e",
+      "size": 21305,
       "contentType": "image/jpeg",
       "cacheControl": "public, max-age=31536000, immutable"
     }
