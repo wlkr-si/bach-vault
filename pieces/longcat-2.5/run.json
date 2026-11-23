@@ -1,0 +1,58 @@
+{
+  "wallSeconds": {
+    "value": 756.389059959,
+    "source": "tool-result"
+  },
+  "toolReportedDurationSeconds": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "inputTokens": {
+    "value": 6050,
+    "source": "tool-result"
+  },
+  "outputTokens": {
+    "value": 12737,
+    "source": "tool-result"
+  },
+  "reasoningTokens": {
+    "value": 37352,
+    "source": "tool-result"
+  },
+  "cachedReadTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "cachedWriteTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "reportedCostUsd": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "reportedModelId": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "requestedModelId": {
+    "value": "longcat-2.5",
+    "source": "tool-result"
+  },
+  "tool": {
+    "value": "opencode",
+    "source": "tool-result"
+  },
+  "toolVersion": {
+    "value": "opencode v2.4.0",
+    "source": "tool-result"
+  },
+  "effort": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "effortSetting": {
+    "value": "longcat-2.5 (model default; no high variant)",
+    "source": "tool-result"
+  }
+}
