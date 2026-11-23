@@ -247,7 +247,14 @@
     "pieces/qwen3.8-flash/reply.txt": "c4f3142b1280755bea5c22ca62040c1aa9797c08ceb25e0877a8c75e5d0af7e8",
     "pieces/qwen3.8-flash/run.json": "0f70b056f610e479732fc5390507bf59c6c587667b21d1e9a10bbfbc8e5d511b",
     "pieces/qwen3.8-flash/signals.json": "3de3aa8f8df2ddbcf5069052a0f6351f24aceb91df62a2b7f6e9fc9e6052300d",
-    "pieces/qwen3.8-flash/timeline.json": "994997ac4e95a0f7ab8071e414cd975f1e7e1f535fff71992468683a46b82ab8"
+    "pieces/qwen3.8-flash/timeline.json": "994997ac4e95a0f7ab8071e414cd975f1e7e1f535fff71992468683a46b82ab8",
+    "pieces/kimi-k3.1-pro/analysis.json": "0bb35349aacbb1201e9a89a62ab47f00aa4aef5575d41e9071dd83eaefcd1ad6",
+    "pieces/kimi-k3.1-pro/meta.json": "5b6d31c9638c57f995f559a63d0d6cae4bf1f3972eda875f944bb715fb3a3fc3",
+    "pieces/kimi-k3.1-pro/piece.js": "eb39c906ae342ba49e47338bb0efc00e23b4c73d6752a670a66a3cad9e3c52d6",
+    "pieces/kimi-k3.1-pro/reply.txt": "d7996d7491f91d8b41e544d1b84f56066a211a79adc99d266efb5533bbb14701",
+    "pieces/kimi-k3.1-pro/run.json": "dfef2b734d17c994762699cdf8f11710ae8916440fc5168d206acadc4d070513",
+    "pieces/kimi-k3.1-pro/signals.json": "cd5e74a8404f071be4fb4cdf644992302c42431efcf1f47388ec1be32288613c",
+    "pieces/kimi-k3.1-pro/timeline.json": "55398e3bfd5019882f9914c0af562747a1842c37f3e48ea1295701495f44d0c9"
   },
   "media": {
     "pieces/claude-fable-5-2/clip.mp4": {
@@ -739,6 +746,18 @@
       "contentType": "image/jpeg",
       "cacheControl": "public, max-age=31536000, immutable",
       "sourceUrl": "https://bach.wlkr.si/_astro/poster.DWWWi4Do.jpg"
+    },
+    "pieces/kimi-k3.1-pro/clip.mp4": {
+      "sha256": "b90172706d47c34771a6d6167e18ab35f4eae0835a2b75e2986370fc3173f509",
+      "size": 3562221,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable"
+    },
+    "pieces/kimi-k3.1-pro/poster.jpg": {
+      "sha256": "f647714deee0c738e68b4948322629a82dd8c8eb964e9a1f63e2342cca8600bc",
+      "size": 31274,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable"
     }
   }
 }
