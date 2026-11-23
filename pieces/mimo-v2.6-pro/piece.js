@@ -1,0 +1,709 @@
+export const title = "The Weaving of Light";
+
+export function start({ audioContext, canvas, duration, random }) {
+  /* ═══════════════ 0 · helpers, seeded randomness ═══════════════ */
+  const A = audioContext;
+  const W = canvas.width || 1080;
+  const H = canvas.height || 1350;
+  const g = canvas.getContext('2d');
+  const T = Math.max(6, Math.min(30, Number(duration) || 15));
+  const BEAT = T / 32;                 // 32 beats = 8 bars of 4/4
+  const T0 = A.currentTime + 0.18;
+  const at = (b) => T0 + b * BEAT;     // beat -> audio clock
+
+  const makeRnd = (seed) => {
+    let s = (seed >>> 0) || 0x9e3779b9;
+    return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+  };
+  const seedBase = Math.floor(random() * 4294967296) >>> 0;
+  const rnd = makeRnd(seedBase ^ 0x51ed270b);      // audio-side
+  const vrnd = makeRnd(seedBase ^ 0x2545f491);     // visual-side
+  const rr = (r, a, b) => a + (b - a) * r();
+  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  const F = (m) => 440 * Math.pow(2, (m - 69) / 12);
+  const makeCanvas = (w, h) => {
+    if (typeof document !== 'undefined' && document.createElement) {
+      const c = document.createElement('canvas'); c.width = w; c.height = h; return c;
+    }
+    return new OffscreenCanvas(w, h);
+  };
+
+  /* ═══════════════ 1 · master bus, hall, echo ═══════════════ */
+  const master = A.createGain(); master.gain.value = 0.0001;
+  const comp = A.createDynamicsCompressor();
+  comp.threshold.value = -16; comp.knee.value = 24; comp.ratio.value = 4;
+  comp.attack.value = 0.005; comp.release.value = 0.25;
+  const analyser = A.createAnalyser();
+  analyser.fftSize = 1024; analyser.smoothingTimeConstant = 0.7;
+  analyser.minDecibels = -92; analyser.maxDecibels = -6;
+  master.connect(comp); comp.connect(analyser); analyser.connect(A.destination);
+
+  {
+    const mg = master.gain;
+    mg.setValueAtTime(0.0001, T0);
+    mg.exponentialRampToValueAtTime(0.86, T0 + 0.7);
+    mg.setValueAtTime(0.86, T0 + T - 1.25);
+    mg.exponentialRampToValueAtTime(0.0001, T0 + T);
+  }
+
+  function makeIR(dur, decay) {
+    const sr = A.sampleRate, n = Math.floor(sr * dur);
+    const buf = A.createBuffer(2, n, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch);
+      let lp = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / n;
+        lp = lp * 0.72 + (rnd() * 2 - 1) * 0.28;
+        d[i] = lp * Math.pow(1 - t, decay);
+      }
+      const taps = [[0.011, 0.5], [0.019, -0.38], [0.031, 0.3], [0.043, -0.24], [0.061, 0.18], [0.079, -0.13]];
+      for (const [dt, amp] of taps) {
+        const i = Math.floor(dt * sr * (1 + ch * 0.07));
+        if (i < n) d[i] += amp;
+      }
+    }
+    return buf;
+  }
+  const conv = A.createConvolver(); conv.buffer = makeIR(2.7, 2.0);
+  const revLp = A.createBiquadFilter(); revLp.type = 'lowpass'; revLp.frequency.value = 4200;
+  const revGain = A.createGain(); revGain.gain.value = 0.95;
+  const sendBus = A.createGain(); sendBus.gain.value = 1;
+  sendBus.connect(conv); conv.connect(revLp); revLp.connect(revGain); revGain.connect(master);
+
+  const dly = A.createDelay(1.2); dly.delayTime.value = BEAT * 0.75;
+  const dlyLp = A.createBiquadFilter(); dlyLp.type = 'lowpass'; dlyLp.frequency.value = 2500;
+  const dlyFb = A.createGain(); dlyFb.gain.value = 0.33;
+  const dlyOut = A.createGain(); dlyOut.gain.value = 0.45;
+  dly.connect(dlyLp); dlyLp.connect(dlyFb); dlyFb.connect(dly);
+  dlyLp.connect(dlyOut); dlyOut.connect(master); dlyOut.connect(sendBus);
+
+  function makeOut(pan, send, echo) {
+    const gn = A.createGain(); gn.gain.value = 0.0001;
+    let node = gn;
+    if (A.createStereoPanner) {
+      const p = A.createStereoPanner(); p.pan.value = clamp(pan || 0, -1, 1);
+      gn.connect(p); node = p;
+    }
+    node.connect(master);
+    const s = A.createGain(); s.gain.value = send; node.connect(s); s.connect(sendBus);
+    if (echo) { const e = A.createGain(); e.gain.value = echo; node.connect(e); e.connect(dly); }
+    return gn;
+  }
+
+  /* ═══════════════ 2 · voices ═══════════════ */
+  function bell(time, freq, dur, vel, pan) {
+    const out = makeOut(pan || 0, 0.42, 0.3);
+    const car = A.createOscillator(); car.type = 'sine'; car.frequency.value = freq;
+    const mod = A.createOscillator(); mod.type = 'sine'; mod.frequency.value = freq * 2.756;
+    const mg = A.createGain();
+    mg.gain.setValueAtTime(freq * 1.9, time);
+    mg.gain.exponentialRampToValueAtTime(freq * 0.02, time + dur * 0.5);
+    mod.connect(mg); mg.connect(car.frequency);
+    const par = A.createOscillator(); par.type = 'sine'; par.frequency.value = freq * 1.99;
+    const pg = A.createGain(); pg.gain.value = 0.22;
+    par.connect(pg); pg.connect(out);
+    car.connect(out);
+    const env = out.gain;
+    env.setValueAtTime(0.0001, time);
+    env.exponentialRampToValueAtTime(vel, time + 0.006);
+    env.exponentialRampToValueAtTime(vel * 0.2, time + dur * 0.38);
+    env.exponentialRampToValueAtTime(0.0001, time + dur);
+    car.start(time); car.stop(time + dur + 0.05);
+    mod.start(time); mod.stop(time + dur + 0.05);
+    par.start(time); par.stop(time + dur + 0.05);
+  }
+
+  function lead(time, freq, dur, vel, pan) {
+    const out = makeOut(pan || 0, 0.4, 0.16);
+    const lp = A.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2700; lp.Q.value = 0.6;
+    lp.connect(out);
+    const lfo = A.createOscillator(); lfo.frequency.value = 5.15;
+    const lfoG = A.createGain();
+    lfoG.gain.setValueAtTime(0, time); lfoG.gain.linearRampToValueAtTime(9, time + 0.45);
+    lfo.connect(lfoG);
+    const parts = [[1, 1, 'triangle'], [2, 0.3, 'sine'], [3, 0.13, 'sine'], [4, 0.05, 'sine']];
+    for (const [m, a, type] of parts) {
+      const o = A.createOscillator(); o.type = type; o.frequency.value = freq * m;
+      const og = A.createGain(); og.gain.value = a;
+      o.connect(og); og.connect(lp); lfoG.connect(o.detune);
+      o.start(time); o.stop(time + dur + 1.4);
+    }
+    lfo.start(time); lfo.stop(time + dur + 1.4);
+    const env = out.gain;
+    env.setValueAtTime(0.0001, time);
+    env.linearRampToValueAtTime(vel, time + 0.05);
+    env.exponentialRampToValueAtTime(vel * 0.55, time + Math.max(0.12, dur * 0.9));
+    env.exponentialRampToValueAtTime(0.0001, time + dur + 0.28 + 0.42 * Math.min(1, dur));
+  }
+
+  function pad(time, tones, dur, vel, cut) {
+    const out = makeOut(0, 0.55);
+    const lp = A.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.8;
+    lp.connect(out);
+    for (let i = 0; i < tones.length; i++) {
+      for (const det of [-7, 7]) {
+        const o = A.createOscillator(); o.type = 'sawtooth';
+        o.frequency.value = F(tones[i]); o.detune.value = det + (i % 2 ? 4 : -4);
+        const og = A.createGain(); og.gain.value = 0.11 / Math.sqrt(tones.length);
+        o.connect(og); og.connect(lp);
+        o.start(time); o.stop(time + dur + 1.3);
+      }
+    }
+    lp.frequency.setValueAtTime(cut * 0.5, time);
+    lp.frequency.linearRampToValueAtTime(cut, time + dur * 0.45);
+    lp.frequency.linearRampToValueAtTime(cut * 0.45, time + dur + 1.0);
+    const env = out.gain;
+    env.setValueAtTime(0.0001, time);
+    env.linearRampToValueAtTime(vel, time + Math.min(1.15, dur * 0.4));
+    env.linearRampToValueAtTime(vel * 0.82, time + dur * 0.82);
+    env.exponentialRampToValueAtTime(0.0001, time + dur + 1.1);
+  }
+
+  function bass(time, freq, dur, vel) {
+    const out = makeOut(0, 0.1);
+    const o = A.createOscillator(); o.type = 'sine'; o.frequency.value = freq;
+    const o2 = A.createOscillator(); o2.type = 'triangle'; o2.frequency.value = freq * 2;
+    const o2g = A.createGain(); o2g.gain.value = 0.16;
+    o.connect(out); o2.connect(o2g); o2g.connect(out);
+    const env = out.gain;
+    env.setValueAtTime(0.0001, time);
+    env.linearRampToValueAtTime(vel, time + 0.03);
+    env.exponentialRampToValueAtTime(vel * 0.55, time + Math.max(0.18, dur * 0.75));
+    env.exponentialRampToValueAtTime(0.0001, time + dur + 0.5);
+    o.start(time); o.stop(time + dur + 0.6);
+    o2.start(time); o2.stop(time + dur + 0.6);
+  }
+
+  const ksCache = new Map();
+  function ks(midi, durSec, time, vel, pan) {
+    const key = midi + ':' + Math.round(durSec * 50);
+    let buf = ksCache.get(key);
+    if (!buf) {
+      const sr = A.sampleRate;
+      const N = Math.max(128, Math.floor(sr * durSec));
+      buf = A.createBuffer(1, N, sr);
+      const d = buf.getChannelData(0);
+      const L = sr / F(midi);
+      const M = Math.ceil(L) + 2;
+      const line = new Float32Array(M);
+      let lp = 0;
+      for (let i = 0; i < M; i++) { lp = lp * 0.55 + (rnd() * 2 - 1) * 0.45; line[i] = lp; }
+      const pk = Math.max(1, Math.floor(M * 0.16));
+      for (let i = M - 1; i >= pk; i--) line[i] -= line[i - pk] * 0.42;
+      const damp = Math.pow(10, -3 / (sr * Math.max(0.35, durSec * 0.92)));
+      let w = 0, rp = ((-L) % M + M) % M, last = 0;
+      for (let n = 0; n < N; n++) {
+        const i0 = Math.floor(rp), fr = rp - i0;
+        const a0 = line[i0], a1 = line[(i0 + 1) % M];
+        const s = a0 + (a1 - a0) * fr;
+        d[n] = s;
+        last = (s + last) * 0.5 * damp;
+        line[w] = last;
+        w = (w + 1) % M; rp += 1; if (rp >= M) rp -= M;
+      }
+      const fade = Math.floor(sr * 0.03);
+      for (let n = 0; n < N; n++) {
+        const t = n / sr;
+        d[n] *= Math.min(1, t / 0.003) * (n > N - fade ? (N - n) / fade : 1);
+      }
+      ksCache.set(key, buf);
+    }
+    const out = makeOut(pan || 0, 0.3);
+    const src = A.createBufferSource(); src.buffer = buf;
+    src.connect(out);
+    out.gain.setValueAtTime(0.0001, time);
+    out.gain.exponentialRampToValueAtTime(vel, time + 0.006);
+    out.gain.exponentialRampToValueAtTime(0.0001, time + Math.min(durSec, 0.6 + vel * 1.6));
+    src.start(time);
+    src.stop(time + durSec);
+  }
+
+  const noiseLen = Math.floor(A.sampleRate * 2);
+  const noiseBuf = A.createBuffer(2, noiseLen, A.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = noiseBuf.getChannelData(ch);
+    let lp = 0;
+    for (let i = 0; i < noiseLen; i++) { lp = lp * 0.55 + (rnd() * 2 - 1) * 0.45; d[i] = lp * 0.85; }
+  }
+  function air(time, dur, vel, f0, f1, q) {
+    const src = A.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    const bp = A.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = q || 1.1;
+    const out = makeOut(0, 0.55);
+    src.connect(bp); bp.connect(out);
+    bp.frequency.setValueAtTime(f0, time);
+    bp.frequency.exponentialRampToValueAtTime(f1, time + dur * 0.85);
+    out.gain.setValueAtTime(0.0001, time);
+    out.gain.exponentialRampToValueAtTime(vel, time + dur * 0.42);
+    out.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+    src.start(time, rnd() * 1.5); src.stop(time + dur + 0.1);
+  }
+  function kick(time, vel) {
+    const o = A.createOscillator(); o.type = 'sine';
+    const out = makeOut(0, 0.06);
+    o.connect(out);
+    o.frequency.setValueAtTime(142, time);
+    o.frequency.exponentialRampToValueAtTime(44, time + 0.1);
+    out.gain.setValueAtTime(0.0001, time);
+    out.gain.exponentialRampToValueAtTime(vel, time + 0.007);
+    out.gain.exponentialRampToValueAtTime(0.0001, time + 0.34);
+    o.start(time); o.stop(time + 0.4);
+  }
+  function tick(time, vel, pan) {
+    const src = A.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    const bp = A.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = rr(rnd, 2600, 4600); bp.Q.value = 3.2;
+    const out = makeOut(pan, 0.4);
+    src.connect(bp); bp.connect(out);
+    out.gain.setValueAtTime(0.0001, time);
+    out.gain.exponentialRampToValueAtTime(vel, time + 0.004);
+    out.gain.exponentialRampToValueAtTime(0.0001, time + 0.1);
+    src.start(time, rnd()); src.stop(time + 0.12);
+  }
+
+  /* ═══════════════ 3 · the score ═══════════════
+     bar 1 Dm(add9) · 2 B♭maj7 · 3 Fmaj7 · 4 Cadd9 ·
+     5 Gm9 · 6 B♭maj7 · 7 A7sus4 → Dm/A → A7 · 8 D(add9) Picardy
+     ════════════════════════════════════════════ */
+  const LEAD = [
+    [4, 81, 1, .60], [5, 82, .5, .54], [5.5, 81, .5, .51], [6, 77, 1, .58], [7, 74, .5, .5], [7.5, 77, .5, .52],
+    [8, 81, 1, .62], [9, 79, .5, .54], [9.5, 81, .5, .56], [10, 84, 1, .64], [11, 81, 1, .56],
+    [12, 84, 1, .65], [13, 86, .5, .61], [13.5, 84, .5, .59], [14, 81, 1, .57], [15, 77, 1, .5],
+    [16, 82, 1, .65], [17, 84, .5, .63], [17.5, 82, .5, .61], [18, 79, 1, .59], [19, 81, 1, .61],
+    [20, 86, 1, .78], [21, 88, .5, .8], [21.5, 89, 1.5, .86], [23, 86, 1, .72],
+    [24, 88, 1, .8], [25, 86, .5, .76], [25.5, 88, .5, .8], [26, 89, 1.5, .94], [27.5, 88, .5, .7],
+    [28, 86, 3.4, .88]
+  ];
+  const COUNTER = [
+    [6, 62, 1, .3], [7, 65, 1, .3],
+    [8, 72, 1, .32], [9, 69, 1, .3], [10, 67, 1, .3], [11, 65, 1, .3],
+    [12, 64, 1, .32], [13, 67, 1, .32], [14, 69, 1, .34], [15, 72, 1, .34],
+    [16, 74, 1, .36], [17, 70, 1, .34], [18, 67, 1, .34], [19, 74, 1, .36],
+    [20, 74, 1, .4], [21, 77, 1, .42], [22, 81, 1, .44], [23, 77, 1, .4],
+    [24, 72, 1, .42], [25, 74, 1, .42], [26, 74, 1, .46], [27, 73, 1, .42],
+    [28, 78, 3.4, .44]
+  ];
+  const BASS = [
+    [0, 38, 3.5, .5], [4, 46, 3.5, .5], [8, 41, 3.5, .5], [12, 48, 3.5, .5],
+    [16, 43, 3.5, .52], [20, 46, 3.5, .56], [24, 45, 3.9, .58], [28, 38, 3.6, .62],
+    [2.5, 45, .8, .28], [6.5, 43, .8, .28], [10.5, 45, .8, .28], [14.5, 47, .8, .3],
+    [18.5, 48, .8, .32], [22.5, 50, .8, .34]
+  ];
+  const ARP = [
+    [3, 60, .17], [3.25, 64, .17], [3.5, 69, .19], [3.75, 72, .21],
+    [4, 58, .17], [4.5, 62, .15], [5, 65, .17], [5.5, 69, .15], [6, 74, .19], [6.5, 69, .15], [7, 65, .17], [7.5, 62, .15],
+    [8, 57, .18], [8.5, 60, .16], [9, 65, .18], [9.5, 69, .16], [10, 72, .2], [10.5, 69, .16], [11, 65, .18], [11.5, 60, .16],
+    [12, 55, .19], [12.5, 60, .17], [13, 64, .19], [13.5, 67, .17], [14, 74, .21], [14.5, 72, .17], [15, 67, .19], [15.5, 60, .17],
+    [16, 55, .21], [16.5, 58, .18], [17, 62, .21], [17.5, 65, .18], [18, 69, .23], [18.5, 65, .18], [19, 62, .21], [19.5, 58, .19],
+    [20, 58, .24], [20.5, 62, .2], [21, 65, .24], [21.5, 69, .2], [22, 74, .26], [22.5, 77, .22], [23, 74, .24], [23.5, 69, .2],
+    [24, 57, .25], [24.5, 62, .21], [25, 64, .25], [25.5, 67, .21],
+    [26, 65, .27], [26.5, 69, .23], [27, 73, .27], [27.5, 76, .23],
+    [28, 62, .24], [28.25, 66, .24], [28.5, 69, .24], [28.75, 74, .26],
+    [29, 78, .26], [29.25, 81, .26], [29.5, 86, .28], [29.75, 90, .28]
+  ];
+  const BELLS = [
+    [0, 86, .26], [2, 88, .12], [8, 89, .17], [12, 91, .19], [16, 93, .21],
+    [20, 93, .23], [24, 91, .21], [28, 100, .26], [28.5, 93, .18]
+  ];
+  const PADS = [
+    [0, [50, 57, 62, 65, 69], 4.1, .17, 780],
+    [4, [53, 58, 62, 65, 69], 4.1, .18, 860],
+    [8, [53, 57, 60, 64, 69], 4.1, .19, 940],
+    [12, [55, 60, 67, 72, 74], 4.1, .2, 1020],
+    [16, [55, 58, 62, 65, 69], 4.1, .22, 1180],
+    [20, [58, 62, 65, 69, 74], 4.1, .24, 1360],
+    [24, [57, 62, 64, 67, 69], 2.1, .25, 1300],
+    [26, [57, 62, 65, 69, 74], 1.1, .26, 1240],
+    [27, [57, 61, 64, 67, 73], 1.1, .26, 1180],
+    [28, [50, 57, 62, 66, 69], 3.8, .28, 1250]
+  ];
+
+  /* ═══════════════ 4 · schedule + collect visual events ═══════════════ */
+  const vEvents = [];
+  const track = (type, b, m, v) => vEvents.push({ t: b * BEAT, m, v, type });
+
+  for (const [b, m, d, v] of LEAD) {
+    lead(at(b), F(m), d * BEAT, v, rr(rnd, -0.12, 0.12));
+    track('lead', b, m, v);
+  }
+  for (const [b, m, d, v] of COUNTER) {
+    lead(at(b), F(m), d * BEAT, v * 0.82, rr(rnd, -0.3, 0.3));
+    track('counter', b, m, v);
+  }
+  for (const [b, m, d, v] of BASS) {
+    bass(at(b), F(m), d * BEAT, v);
+    ks(m + 12, 2.2, at(b), v * 0.5, 0);
+    track('bass', b, m, v);
+  }
+  for (let i = 0; i < ARP.length; i++) {
+    const [b, m, v] = ARP[i];
+    const dur = F(m) < 180 ? 2.4 : 1.75;
+    ks(m, dur, at(b), v, i % 2 ? 0.34 : -0.34);
+    track('arp', b, m, v);
+  }
+  for (const [b, m, v] of BELLS) {
+    bell(at(b), F(m), 2.6, v, rr(rnd, -0.55, 0.55));
+    track('bell', b, m, v);
+  }
+  for (const [b, tones, d, v, cut] of PADS) pad(at(b), tones, d * BEAT, v, cut);
+  bell(at(0), F(50), 5.5, .3, -0.2);
+  bell(at(28), F(50), 5.5, .32, -0.2);
+
+  for (let b = 8; b <= 26; b += 2) { kick(at(b), 0.2 + 0.012 * (b - 8)); track('perc', b, 40, 0.4); }
+  for (let b = 16.5; b <= 27.5; b += 1) tick(at(b), 0.055, b % 2 ? 0.45 : -0.45);
+  air(at(14.2), BEAT * 2.2, 0.075, 380, 1250, 1.0);
+  air(at(18.6), BEAT * 2.0, 0.09, 420, 1800, 1.1);
+  air(at(23.2), BEAT * 2.2, 0.1, 520, 2600, 1.2);
+  air(at(15.0), BEAT * 13, 0.05, 900, 2600, 2.4);
+  air(at(25.4), BEAT * 2.6, 0.13, 700, 3400, 1.0);
+  vEvents.push({ t: 14.2 * BEAT, m: 60, v: .4, type: 'air' });
+  vEvents.push({ t: 18.6 * BEAT, m: 60, v: .5, type: 'air' });
+  vEvents.push({ t: 23.2 * BEAT, m: 60, v: .55, type: 'air' });
+  vEvents.push({ t: 25.4 * BEAT, m: 60, v: .7, type: 'air' });
+  vEvents.sort((a, b) => a.t - b.t);
+
+  /* ═══════════════ 5 · visual setup ═══════════════ */
+  const GW = Math.round(W / 2), GH = Math.round(H / 2);
+  const glow = makeCanvas(GW, GH);
+  const gg = glow.getContext('2d');
+  gg.lineCap = 'round'; gg.lineJoin = 'round';
+
+  const bgGrad = g.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, '#04060f');
+  bgGrad.addColorStop(0.45, '#080d1e');
+  bgGrad.addColorStop(1, '#0b0a18');
+
+  const cx = W * 0.5, cy = H * 0.46;
+  const centerCool = g.createRadialGradient(cx, cy, 0, cx, cy, H * 0.72);
+  centerCool.addColorStop(0, 'rgba(70,120,220,0.55)');
+  centerCool.addColorStop(0.45, 'rgba(40,70,170,0.18)');
+  centerCool.addColorStop(1, 'rgba(10,20,60,0)');
+  const centerWarm = g.createRadialGradient(cx, cy, 0, cx, cy, H * 0.82);
+  centerWarm.addColorStop(0, 'rgba(255,196,120,0.62)');
+  centerWarm.addColorStop(0.42, 'rgba(230,130,70,0.2)');
+  centerWarm.addColorStop(1, 'rgba(80,30,20,0)');
+
+  const vig = g.createRadialGradient(cx, cy, H * 0.18, cx, cy, H * 0.82);
+  vig.addColorStop(0, 'rgba(0,0,0,0)');
+  vig.addColorStop(0.62, 'rgba(2,3,10,0.28)');
+  vig.addColorStop(1, 'rgba(1,2,7,0.82)');
+
+  const grainTile = makeCanvas(128, 128);
+  {
+    const gc = grainTile.getContext('2d');
+    const img = gc.createImageData(128, 128);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const v = 128 + (vrnd() * 2 - 1) * 30;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+      img.data[i + 3] = 255;
+    }
+    gc.putImageData(img, 0, 0);
+  }
+  const grainPat = g.createPattern(grainTile, 'repeat');
+
+  const N_RIB = 7;
+  const hues = [212, 231, 256, 284, 314, 344, 30];
+  const ribbons = [];
+  for (let i = 0; i < N_RIB; i++) {
+    ribbons.push({
+      baseY: H * (0.235 + 0.088 * i) + rr(vrnd, -26, 26),
+      amp: H * rr(vrnd, 0.036, 0.062),
+      k1: rr(vrnd, 0.0026, 0.0044), k2: rr(vrnd, 0.0075, 0.0125),
+      ph1: rr(vrnd, 0, 6.283), ph2: rr(vrnd, 0, 6.283),
+      w1: rr(vrnd, 0.16, 0.38) * (i % 2 ? 1 : -1),
+      w2: rr(vrnd, 0.32, 0.72) * (i % 2 ? -1 : 1),
+      slope: rr(vrnd, -0.13, 0.015),
+      width: H * rr(vrnd, 0.022, 0.043),
+      hue: hues[i],
+      zK: rr(vrnd, 0.0034, 0.0062), zPh: rr(vrnd, 0, 6.283), zW: rr(vrnd, 0.1, 0.28) * (i % 2 ? 1 : -1),
+      pulses: []
+    });
+  }
+
+  const DUST = 320;
+  const dust = [];
+  for (let i = 0; i < DUST; i++) {
+    dust.push({
+      x: vrnd() * W, y: vrnd() * H, z: rr(vrnd, 0.25, 1),
+      r: rr(vrnd, 0.7, 2.7), ph: rr(vrnd, 0, 6.283),
+      sp: rr(vrnd, 0.1, 0.5), sw: rr(vrnd, 0.3, 1.2)
+    });
+  }
+  const sparks = [], ripples = [], blooms = [];
+  let flash = 0;
+
+  const px = (m) => 90 + ((m - 38) / 62) * (W - 180);
+
+  function ribY(r, x, t) {
+    let y = r.baseY + r.slope * (x - W * 0.5)
+      + r.amp * Math.sin(x * r.k1 + r.ph1 + t * r.w1)
+      + r.amp * 0.42 * Math.sin(x * r.k2 + r.ph2 + t * r.w2)
+      + r.amp * 0.16 * Math.sin(x * 0.021 + r.ph1 * 2 - t * r.w2 * 1.7);
+    for (let i = 0; i < r.pulses.length; i++) {
+      const p = r.pulses[i], dt = t - p.t0;
+      if (dt < 0 || dt > 1.4) continue;
+      const d = (x - p.x) / p.w;
+      y += p.a * Math.exp(-d * d) * Math.exp(-dt * 3.1) * Math.cos(dt * 8.5 - d * 0.5);
+    }
+    return y;
+  }
+  const ribW = (r, x, t, mid) =>
+    r.width * (0.6 + 0.4 * Math.sin(x * r.k1 * 0.8 + r.ph2 - t * r.w1 * 0.7))
+    * smooth(0, 250, x) * smooth(0, 250, W - x) * (0.76 + 0.52 * mid);
+
+  function spawn(ev, t) {
+    const x = px(ev.m);
+    const addPulse = (k, a, w) => {
+      const r = ribbons[k];
+      r.pulses.push({ x, t0: t, a, w });
+      if (r.pulses.length > 10) r.pulses.shift();
+    };
+    const addSparks = (n, spread, size, hue) => {
+      for (let i = 0; i < n && sparks.length < 720; i++) {
+        const a = vrnd() * 6.283, sp = rr(vrnd, 30, spread);
+        sparks.push({
+          x: x + rr(vrnd, -24, 24), y: ribY(ribbons[4], x, t) + rr(vrnd, -40, 40),
+          vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 22,
+          r: rr(vrnd, size * 0.5, size), life: 0, max: rr(vrnd, 0.7, 1.7),
+          col: hue
+        });
+      }
+    };
+    const addRipple = (y, r0, r1, dur, a, col, flat) => {
+      if (ripples.length > 46) ripples.shift();
+      ripples.push({ x, y, t0: t, r0, r1, dur, a, col, flat: flat || 1 });
+    };
+    if (ev.type === 'lead') {
+      const y = ribY(ribbons[4], x, t);
+      addPulse(4, 52, 120); addPulse(5, 34, 150);
+      addRipple(y, 26, 300, 1.5, 0.5 + ev.v * 0.5, '255,222,180');
+      addSparks(Math.round(6 + ev.v * 12), 210, 3.4, '255,226,182');
+    } else if (ev.type === 'counter') {
+      addPulse(3, 30, 130);
+      addRipple(ribY(ribbons[3], x, t), 18, 190, 1.15, 0.32, '190,214,255');
+      addSparks(3, 130, 2.4, '196,214,255');
+    } else if (ev.type === 'arp') {
+      addPulse(1, 15, 90); addPulse(2, 12, 110);
+      if (ev.v > 0.2) addSparks(2, 90, 1.9, '206,226,255');
+    } else if (ev.type === 'bass') {
+      addPulse(0, 42, 210);
+      addRipple(H * 0.72, 40, 520, 2.1, 0.32, '120,170,255', 0.42);
+    } else if (ev.type === 'bell') {
+      addPulse(6, 22, 100);
+      addRipple(ribY(ribbons[6], x, t), 14, 240, 1.35, 0.42, '255,238,206');
+      addSparks(5, 160, 2.8, '255,240,214');
+    } else if (ev.type === 'perc') {
+      flash = Math.min(1.2, flash + 0.42);
+    } else if (ev.type === 'air') {
+      flash = Math.min(1.2, flash + 0.2);
+      for (let i = 0; i < DUST; i++) dust[i].y -= 40 * dust[i].z;
+    }
+  }
+
+  /* ═══════════════ 6 · render loop ═══════════════ */
+  const bins = new Uint8Array(analyser.frequencyBinCount);
+  const tdata = new Uint8Array(analyser.fftSize);
+  const e = { bass: 0, mid: 0, high: 0, peak: 0 };
+  let evIdx = 0, lastWall = 0, running = true;
+  const wall0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+  function readAudio() {
+    analyser.getByteFrequencyData(bins);
+    let b1 = 0, b2 = 0, b3 = 0;
+    for (let i = 1; i < 6; i++) b1 += bins[i];
+    for (let i = 6; i < 40; i++) b2 += bins[i];
+    for (let i = 40; i < 140; i++) b3 += bins[i];
+    analyser.getByteTimeDomainData(tdata);
+    let sum = 0;
+    for (let i = 0; i < tdata.length; i += 4) { const v = (tdata[i] - 128) / 128; sum += v * v; }
+    const rms = Math.sqrt(sum / (tdata.length / 4));
+    e.bass += (clamp(b1 / (5 * 255), 0, 1) - e.bass) * 0.16;
+    e.mid += (clamp(b2 / (34 * 255), 0, 1) - e.mid) * 0.16;
+    e.high += (clamp(b3 / (100 * 255), 0, 1) - e.high) * 0.2;
+    e.peak += (clamp(rms * 2.6, 0, 1) - e.peak) * 0.22;
+  }
+
+  function drawRibbon(r, x0, x1, t, warmth, glowMul) {
+    const steps = 6, pts = [];
+    for (let s = 0; s <= steps; s++) {
+      const x = x0 + ((x1 - x0) * s) / steps;
+      pts.push([x, ribY(r, x, t), ribW(r, x, t, e.mid)]);
+    }
+    let y0 = 1e9, y1 = -1e9;
+    for (const p of pts) { y0 = Math.min(y0, p[1] - p[2]); y1 = Math.max(y1, p[1] + p[2]); }
+    if (y1 < -60 || y0 > H + 60) return;
+
+    g.save();
+    g.beginPath(); g.rect(x0 - 1, 0, x1 - x0 + 2, H); g.clip();
+    g.beginPath();
+    g.moveTo(pts[0][0], pts[0][1] - pts[0][2]);
+    for (let s = 1; s <= steps; s++) g.lineTo(pts[s][0], pts[s][1] - pts[s][2]);
+    for (let s = steps; s >= 0; s--) g.lineTo(pts[s][0], pts[s][1] + pts[s][2]);
+    g.closePath();
+    const hue = r.hue + warmth * 14 - 10 * (1 - warmth);
+    const sat = 62 + 22 * warmth;
+    const lig = 52 + 12 * warmth;
+    const core = `hsla(${hue},${sat}%,${lig}%,${0.13 + 0.13 * e.mid + 0.1 * warmth})`;
+    const edge = `hsla(${hue},${sat}%,${lig}%,0)`;
+    const gr = g.createLinearGradient(0, y0, 0, y1);
+    gr.addColorStop(0, edge); gr.addColorStop(0.5, core); gr.addColorStop(1, edge);
+    g.fillStyle = gr;
+    g.fill();
+    g.restore();
+
+    gg.beginPath();
+    gg.moveTo(pts[0][0] * 0.5, pts[0][1] * 0.5);
+    for (let s = 1; s <= steps; s++) gg.lineTo(pts[s][0] * 0.5, pts[s][1] * 0.5);
+    gg.strokeStyle = `hsla(${hue},${80}%,${72 + 12 * warmth}%,${(0.2 + 0.42 * e.high + 0.3 * warmth) * glowMul})`;
+    gg.lineWidth = 1.5 + 1.6 * e.high;
+    gg.stroke();
+  }
+
+  function frame() {
+    if (!running) return;
+    const wallNow = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1;
+    const dt = clamp((wallNow - lastWall) / 1000 || 0.016, 0.001, 0.05);
+    lastWall = wallNow;
+    const elapsed = (wallNow - wall0) / 1000;
+    const t = clamp(A.currentTime - T0, 0, T + 1);
+    readAudio();
+
+    while (evIdx < vEvents.length && vEvents[evIdx].t <= t) { spawn(vEvents[evIdx], vEvents[evIdx].t); evIdx++; }
+    flash *= Math.exp(-dt * 3.6);
+
+    const intro = smooth(0, 2.3, t);
+    const warmth = smooth(T * 0.72, T * 0.97, t) * 0.85 + smooth(T * 0.28, T * 0.62, t) * 0.15;
+    const slow = 1 - 0.55 * smooth(T * 0.84, T, t);
+    const tt = t * slow;
+
+    /* background */
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 1;
+    g.fillStyle = bgGrad; g.fillRect(0, 0, W, H);
+
+    g.globalCompositeOperation = 'lighter';
+    g.globalAlpha = (0.1 + 0.4 * e.peak + 0.22 * warmth) * intro;
+    g.fillStyle = centerCool; g.fillRect(0, 0, W, H);
+    g.globalAlpha = (0.06 + 0.55 * warmth + 0.3 * flash) * intro;
+    g.fillStyle = centerWarm; g.fillRect(0, 0, W, H);
+    g.globalAlpha = 1;
+
+    /* dust behind */
+    for (let i = 0; i < DUST; i++) {
+      const d = dust[i];
+      d.y -= (5 + 30 * e.bass + 26 * warmth) * d.z * dt;
+      d.x += Math.sin(t * d.sp + d.ph) * d.sw * 12 * dt;
+      if (d.y < -12) { d.y = H + 12; d.x = vrnd() * W; }
+      if (d.x < -12) d.x = W + 12; else if (d.x > W + 12) d.x = -12;
+      const tw = 0.55 + 0.45 * Math.sin(t * (0.7 + d.sp * 2) + d.ph * 3);
+      const a = (0.1 + 0.42 * d.z) * (0.32 + 0.72 * e.high) * tw * intro;
+      if (a < 0.012) continue;
+      g.fillStyle = `hsla(${210 + 26 * warmth + d.z * 26},${72}%,${72 + 14 * warmth}%,${a})`;
+      g.beginPath(); g.arc(d.x, d.y, d.r * (0.7 + 0.6 * d.z), 0, 6.283); g.fill();
+    }
+
+    /* the weave */
+    const BANDS = 10;
+    for (let bi = 0; bi < BANDS; bi++) {
+      const x0 = (W * bi) / BANDS, x1 = (W * (bi + 1)) / BANDS, xc = (x0 + x1) / 2;
+      const order = [];
+      for (let i = 0; i < N_RIB; i++) order.push(i);
+      order.sort((a, b) =>
+        Math.sin(xc * ribbons[b].zK + ribbons[b].zPh + tt * ribbons[b].zW) -
+        Math.sin(xc * ribbons[a].zK + ribbons[a].zPh + tt * ribbons[a].zW));
+      for (const i of order) drawRibbon(ribbons[i], x0, x1, tt, warmth, 0.72 + 0.5 * intro);
+    }
+
+    /* glow layer: fade, then sparks / ripples / blooms */
+    gg.globalCompositeOperation = 'destination-out';
+    gg.fillStyle = 'rgba(255,255,255,0.085)';
+    gg.fillRect(0, 0, GW, GH);
+    gg.globalCompositeOperation = 'lighter';
+
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const s = sparks[i];
+      s.life += dt;
+      if (s.life >= s.max) { sparks.splice(i, 1); continue; }
+      s.x += s.vx * dt; s.y += s.vy * dt;
+      s.vx *= 0.965; s.vy = s.vy * 0.965 - 26 * dt;
+      const p = 1 - s.life / s.max;
+      gg.fillStyle = `rgba(${s.col},${p * p * 0.85})`;
+      gg.beginPath(); gg.arc(s.x * 0.5, s.y * 0.5, s.r * 0.5 * (0.55 + 0.8 * p), 0, 6.283); gg.fill();
+    }
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      const r = ripples[i];
+      const p = (t - r.t0) / r.dur;
+      if (p < 0) continue;
+      if (p > 1) { ripples.splice(i, 1); continue; }
+      const rad = (r.r0 + p * r.r1) * 0.5;
+      gg.beginPath();
+      gg.ellipse(r.x * 0.5, r.y * 0.5, rad, rad * r.flat, 0, 0, 6.283);
+      gg.strokeStyle = `rgba(${r.col},${Math.pow(1 - p, 2.1) * r.a})`;
+      gg.lineWidth = 1 + 3.2 * (1 - p);
+      gg.stroke();
+    }
+    for (let i = blooms.length - 1; i >= 0; i--) {
+      const b = blooms[i];
+      const p = (t - b.t0) / b.dur;
+      if (p < 0) continue;
+      if (p > 1) { blooms.splice(i, 1); continue; }
+      const rad = (b.r0 + p * b.r1) * 0.5;
+      const a = Math.pow(1 - p, 2) * b.a;
+      const gr = gg.createRadialGradient(b.x * 0.5, b.y * 0.5, 0, b.x * 0.5, b.y * 0.5, rad);
+      gr.addColorStop(0, `rgba(255,236,200,${a})`);
+      gr.addColorStop(0.4, `rgba(255,176,110,${a * 0.42})`);
+      gr.addColorStop(1, 'rgba(255,140,80,0)');
+      gg.fillStyle = gr;
+      gg.fillRect(b.x * 0.5 - rad, b.y * 0.5 - rad, rad * 2, rad * 2);
+      gg.beginPath();
+      gg.ellipse(b.x * 0.5, b.y * 0.5, rad * 0.82, rad * 0.82 * b.flat, 0, 0, 6.283);
+      gg.strokeStyle = `rgba(255,224,180,${a * 0.7})`;
+      gg.lineWidth = 2.4 * (1 - p) + 0.6;
+      gg.stroke();
+    }
+
+    g.globalCompositeOperation = 'lighter';
+    g.drawImage(glow, 0, 0, W, H);
+    g.globalCompositeOperation = 'source-over';
+
+    /* final wash, vignette, grain */
+    if (warmth > 0.01) {
+      g.globalCompositeOperation = 'lighter';
+      g.globalAlpha = warmth * (0.3 + 0.4 * e.peak);
+      g.fillStyle = centerWarm; g.fillRect(0, 0, W, H);
+      g.globalAlpha = 1;
+      g.globalCompositeOperation = 'source-over';
+    }
+    g.fillStyle = vig;
+    g.globalAlpha = 0.9 - 0.22 * warmth;
+    g.fillRect(0, 0, W, H);
+    g.globalAlpha = 1;
+
+    if (grainPat) {
+      g.globalCompositeOperation = 'overlay';
+      g.globalAlpha = 0.062;
+      g.fillStyle = grainPat;
+      g.fillRect(0, 0, W, H);
+      g.globalAlpha = 1;
+      g.globalCompositeOperation = 'source-over';
+    }
+
+    if (elapsed > T + 0.35) { running = false; return; }
+    requestAnimationFrame(frame);
+  }
+
+  /* climax + resolution blooms */
+  blooms.push({ t0: 0.15, x: cx, y: cy, r0: 40, r1: 620, dur: 3.2, a: 0.34, flat: 1 });
+  blooms.push({ t0: 20 * BEAT, x: cx, y: H * 0.42, r0: 60, r1: 900, dur: 2.6, a: 0.5, flat: 1 });
+  blooms.push({ t0: 26 * BEAT, x: cx, y: H * 0.4, r0: 60, r1: 1500, dur: 3.4, a: 0.95, flat: 1 });
+  blooms.push({ t0: 28 * BEAT, x: cx, y: H * 0.44, r0: 80, r1: 1900, dur: 4.2, a: 0.9, flat: 1 });
+
+  requestAnimationFrame(frame);
+
+  return {
+    stop() {
+      running = false;
+      try { master.gain.cancelScheduledValues(A.currentTime); master.gain.value = 0.0001; } catch (err) { /* noop */ }
+    }
+  };
+}
