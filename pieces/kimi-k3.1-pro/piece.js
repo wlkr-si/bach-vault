@@ -1,0 +1,647 @@
+export const title = "Thirteen Petals for a Glass Clock";
+
+export function start({ audioContext: ac, canvas, duration, random }) {
+  const W = canvas.width;
+  const H = canvas.height;
+  const pen = canvas.getContext("2d");
+  const origin = ac.currentTime + 0.04;
+
+  const beat = 60 / 128;
+  const bar = beat * 4;
+  const step = beat / 4;
+  const bars = 8;
+  const midi = n => 440 * Math.pow(2, (n - 69) / 12);
+  const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+  const smooth = (a, b, x) => {
+    const q = clamp((x - a) / (b - a));
+    return q * q * (3 - 2 * q);
+  };
+
+  const master = ac.createGain();
+  master.gain.value = 0.82;
+  const limiter = ac.createDynamicsCompressor();
+  limiter.threshold.value = -11;
+  limiter.knee.value = 10;
+  limiter.ratio.value = 12;
+  limiter.attack.value = 0.002;
+  limiter.release.value = 0.14;
+  master.connect(limiter);
+  limiter.connect(ac.destination);
+
+  const impulse = ac.createBuffer(2, Math.floor(ac.sampleRate * 1.9), ac.sampleRate);
+  for (let channel = 0; channel < 2; channel++) {
+    const data = impulse.getChannelData(channel);
+    for (let i = 0; i < data.length; i++) {
+      const x = i / data.length;
+      data[i] = (random() * 2 - 1) * Math.pow(1 - x, 2.8) *
+        (0.75 + 0.25 * Math.sin(i * 0.00031 + channel));
+    }
+  }
+  const reverb = ac.createConvolver();
+  reverb.buffer = impulse;
+  const reverbReturn = ac.createGain();
+  reverbReturn.gain.value = 0.3;
+  reverb.connect(reverbReturn);
+  reverbReturn.connect(master);
+
+  const delay = ac.createDelay(1);
+  delay.delayTime.value = beat * 0.75;
+  const delayFilter = ac.createBiquadFilter();
+  delayFilter.type = "lowpass";
+  delayFilter.frequency.value = 3300;
+  const feedback = ac.createGain();
+  feedback.gain.value = 0.24;
+  const delayReturn = ac.createGain();
+  delayReturn.gain.value = 0.2;
+  delay.connect(delayFilter);
+  delayFilter.connect(feedback);
+  feedback.connect(delay);
+  delayFilter.connect(delayReturn);
+  delayReturn.connect(master);
+
+  const noiseBuffer = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+  const noiseData = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < noiseData.length; i++) noiseData[i] = random() * 2 - 1;
+
+  const visuals = [];
+
+  function route(node, pan = 0, wet = 0.12, echo = 0) {
+    const p = ac.createStereoPanner ? ac.createStereoPanner() : ac.createGain();
+    if (p.pan) p.pan.value = pan;
+    node.connect(p);
+    p.connect(master);
+    if (wet) {
+      const send = ac.createGain();
+      send.gain.value = wet;
+      p.connect(send);
+      send.connect(reverb);
+    }
+    if (echo) {
+      const send = ac.createGain();
+      send.gain.value = echo;
+      p.connect(send);
+      send.connect(delay);
+    }
+  }
+
+  function pad(note, when, length, index) {
+    const t = origin + when;
+    const end = t + length;
+    const filter = ac.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.Q.value = 0.6;
+    filter.frequency.setValueAtTime(520, t);
+    filter.frequency.linearRampToValueAtTime(1250, t + length * 0.48);
+    filter.frequency.linearRampToValueAtTime(680, end);
+    const gain = ac.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.027, t + 0.24);
+    gain.gain.setValueAtTime(0.027, Math.max(t + 0.25, end - 0.52));
+    gain.gain.exponentialRampToValueAtTime(0.0001, end);
+    filter.connect(gain);
+    route(gain, (index - 2) * 0.2, 0.58);
+    for (const detune of [-5, 5]) {
+      const osc = ac.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.value = midi(note);
+      osc.detune.value = detune;
+      osc.connect(filter);
+      osc.start(t);
+      osc.stop(end + 0.03);
+    }
+  }
+
+  function pluck(note, when, length = 0.25, velocity = 0.065, pan = 0) {
+    const t = origin + when;
+    const end = t + Math.max(0.075, length);
+    const f = midi(note);
+    const carrier = ac.createOscillator();
+    const modulator = ac.createOscillator();
+    const index = ac.createGain();
+    const gain = ac.createGain();
+    const filter = ac.createBiquadFilter();
+    carrier.type = "sine";
+    modulator.type = "sine";
+    carrier.frequency.value = f;
+    modulator.frequency.value = f * 2.006;
+    index.gain.setValueAtTime(f * 1.8, t);
+    index.gain.exponentialRampToValueAtTime(0.01, t + Math.min(0.3, length));
+    modulator.connect(index);
+    index.connect(carrier.frequency);
+    filter.type = "lowpass";
+    filter.frequency.value = 5600;
+    filter.Q.value = 0.7;
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(velocity, t + 0.004);
+    gain.gain.exponentialRampToValueAtTime(0.0001, end);
+    carrier.connect(filter);
+    filter.connect(gain);
+    route(gain, pan, 0.34, 0.22);
+    carrier.start(t);
+    modulator.start(t);
+    carrier.stop(end + 0.03);
+    modulator.stop(end + 0.03);
+    visuals.push({ kind: "pluck", t: when, note, velocity });
+  }
+
+  function lead(note, when, length, velocity = 0.09) {
+    const t = origin + when;
+    const end = t + length;
+    const f = midi(note);
+    const filter = ac.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = 2800;
+    filter.Q.value = 1.3;
+    const gain = ac.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(velocity, t + 0.026);
+    gain.gain.exponentialRampToValueAtTime(velocity * 0.63, Math.min(end - 0.06, t + 0.18));
+    gain.gain.setValueAtTime(velocity * 0.63, Math.max(t + 0.19, end - 0.13));
+    gain.gain.exponentialRampToValueAtTime(0.0001, end);
+    filter.connect(gain);
+    route(gain, 0.08, 0.35, 0.16);
+
+    const vibrato = ac.createOscillator();
+    const vibratoDepth = ac.createGain();
+    vibrato.frequency.value = 5.1;
+    vibratoDepth.gain.setValueAtTime(0, t);
+    vibratoDepth.gain.linearRampToValueAtTime(f * 0.0032, t + 0.16);
+    vibrato.connect(vibratoDepth);
+
+    for (const [type, level] of [["triangle", 0.8], ["sine", 0.35]]) {
+      const osc = ac.createOscillator();
+      const partial = ac.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(f * 0.985, t);
+      osc.frequency.exponentialRampToValueAtTime(f, t + 0.045);
+      partial.gain.value = level;
+      vibratoDepth.connect(osc.frequency);
+      osc.connect(partial);
+      partial.connect(filter);
+      osc.start(t);
+      osc.stop(end + 0.03);
+    }
+    vibrato.start(t);
+    vibrato.stop(end + 0.03);
+    visuals.push({ kind: "lead", t: when, note, length, velocity });
+  }
+
+  function bass(note, when, length, velocity = 0.14) {
+    const t = origin + when;
+    const end = t + length;
+    const f = midi(note);
+    const filter = ac.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(520, t);
+    filter.frequency.exponentialRampToValueAtTime(180, end);
+    const gain = ac.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(velocity, t + 0.009);
+    gain.gain.exponentialRampToValueAtTime(velocity * 0.62, t + 0.09);
+    gain.gain.setValueAtTime(velocity * 0.62, Math.max(t + 0.1, end - 0.09));
+    gain.gain.exponentialRampToValueAtTime(0.0001, end);
+    filter.connect(gain);
+    route(gain, 0, 0.025);
+    for (const [type, octave, level] of [["sine", 0, 0.9], ["triangle", 12, 0.28]]) {
+      const osc = ac.createOscillator();
+      const partial = ac.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(midi(note + octave) * 0.975, t);
+      osc.frequency.exponentialRampToValueAtTime(midi(note + octave), t + 0.035);
+      partial.gain.value = level;
+      osc.connect(partial);
+      partial.connect(filter);
+      osc.start(t);
+      osc.stop(end + 0.02);
+    }
+    visuals.push({ kind: "bass", t: when, velocity });
+  }
+
+  function noise(when, length, type, frequency, velocity, pan = 0) {
+    const t = origin + when;
+    const source = ac.createBufferSource();
+    source.buffer = noiseBuffer;
+    const filter = ac.createBiquadFilter();
+    filter.type = type;
+    filter.frequency.value = frequency;
+    filter.Q.value = type === "bandpass" ? 0.8 : 0.4;
+    const gain = ac.createGain();
+    gain.gain.setValueAtTime(velocity, t);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + length);
+    source.connect(filter);
+    filter.connect(gain);
+    route(gain, pan, type === "highpass" ? 0.15 : 0.25);
+    source.start(t, random() * 0.55, length + 0.02);
+  }
+
+  function kick(when, velocity = 0.48) {
+    const t = origin + when;
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(145, t);
+    osc.frequency.exponentialRampToValueAtTime(43, t + 0.115);
+    gain.gain.setValueAtTime(velocity, t);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.31);
+    osc.connect(gain);
+    route(gain, 0, 0.015);
+    osc.start(t);
+    osc.stop(t + 0.33);
+    noise(when, 0.025, "highpass", 4500, 0.055);
+    visuals.push({ kind: "kick", t: when, velocity });
+  }
+
+  function snare(when, velocity = 0.15) {
+    noise(when, 0.19, "bandpass", 1850, velocity, (random() - 0.5) * 0.18);
+    noise(when, 0.28, "highpass", 5400, velocity * 0.48);
+    const t = origin + when;
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(190, t);
+    osc.frequency.exponentialRampToValueAtTime(125, t + 0.09);
+    gain.gain.setValueAtTime(velocity * 0.55, t);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+    osc.connect(gain);
+    route(gain, 0, 0.12);
+    osc.start(t);
+    osc.stop(t + 0.12);
+    visuals.push({ kind: "snare", t: when, angle: random() * Math.PI * 2 });
+  }
+
+  function hat(when, velocity = 0.032, open = false, pan = 0) {
+    noise(when, open ? 0.19 : 0.055, "highpass", 7200, velocity, pan);
+    visuals.push({ kind: "hat", t: when, velocity });
+  }
+
+  function cymbal(when, velocity = 0.11) {
+    noise(when, 1.25, "highpass", 4900, velocity, -0.12);
+    noise(when + 0.013, 0.8, "bandpass", 8300, velocity * 0.45, 0.25);
+    visuals.push({ kind: "cymbal", t: when });
+  }
+
+  const chords = [
+    [50, 57, 60, 64, 65],
+    [46, 53, 57, 60, 62],
+    [43, 50, 53, 57, 58],
+    [45, 52, 55, 58, 61],
+    [50, 57, 60, 64, 65],
+    [46, 53, 57, 60, 62],
+    [43, 50, 53, 57, 58],
+    [50, 57, 61, 64, 66]
+  ];
+  const roots = [38, 34, 31, 33, 38, 34, 31, 38];
+  const arpPattern = [0, 2, 1, 3, 2, 4, 1, 3, 0, 3, 1, 4, 2, 3, 1, 4];
+
+  for (let b = 0; b < bars; b++) {
+    const start = b * bar;
+    chords[b].forEach((note, i) => pad(note, start, bar + 0.2, i));
+    visuals.push({ kind: "harmony", t: start, bar: b });
+
+    const stride = b < 4 ? 2 : 1;
+    if (b < 7) {
+      for (let s = 0; s < 16; s += stride) {
+        const accent = s % 8 === 0 || s % 8 === 3 || s % 8 === 6;
+        const note = chords[b][arpPattern[s]] + 12 + (b === 3 && s >= 12 ? 12 : 0);
+        pluck(
+          note,
+          start + s * step + (s % 4 ? (random() - 0.5) * 0.006 : 0),
+          b < 4 ? 0.34 : 0.22,
+          accent ? 0.072 : 0.038 + random() * 0.009,
+          (arpPattern[s] - 2) * 0.17
+        );
+      }
+    } else {
+      pluck(74, start, 0.8, 0.09, -0.25);
+      pluck(81, start + 6 * step, 0.8, 0.08, 0.2);
+      pluck(86, start + 10 * step, 1.1, 0.095, 0);
+    }
+
+    let bassSteps;
+    if (b === 0) bassSteps = [[0, 0, 7], [8, 7, 6]];
+    else if (b === 7) bassSteps = [[0, 0, 15]];
+    else bassSteps = [[0, 0, 5], [6, 7, 2], [8, 0, 3], [11, 7, 2], [14, b === 3 ? 6 : 10, 2]];
+    for (const [s, interval, len] of bassSteps) {
+      let note = roots[b] + interval;
+      if (b === 6 && s >= 8) note = 33 + (s === 14 ? 12 : interval);
+      bass(note, start + s * step, len * step * 0.94, s === 0 ? 0.16 : 0.115);
+    }
+
+    if (b === 0) {
+      kick(start, 0.35);
+      hat(start + 8 * step, 0.022, true, -0.3);
+      hat(start + 14 * step, 0.018, false, 0.35);
+    } else if (b < 7) {
+      const kicks = b < 4 ? [0, 6, 10] : [0, 6, 8, 11, 14];
+      kicks.forEach(s => kick(start + s * step, s === 0 ? 0.49 : 0.4));
+      snare(start + 4 * step, 0.145);
+      snare(start + 12 * step, 0.16);
+      for (let s = 0; s < 16; s += b < 4 ? 2 : 1) {
+        hat(start + s * step, s % 4 === 0 ? 0.038 : 0.021 + random() * 0.009, s === 14, s % 4 < 2 ? -0.32 : 0.32);
+      }
+    } else {
+      kick(start, 0.56);
+      cymbal(start, 0.14);
+    }
+  }
+
+  cymbal(4 * bar, 0.12);
+
+  const melody = [
+    [0, 0, 74, 4], [0, 6, 77, 3], [0, 10, 76, 4], [0, 14, 72, 2],
+    [1, 0, 74, 4], [1, 6, 77, 3], [1, 10, 81, 4], [1, 14, 79, 2],
+    [2, 0, 77, 3], [2, 4, 79, 4], [2, 10, 81, 3], [2, 14, 82, 2],
+    [3, 0, 81, 3], [3, 4, 79, 3], [3, 8, 77, 3], [3, 12, 76, 2], [3, 14, 73, 2],
+    [4, 0, 74, 4], [4, 4, 81, 3], [4, 8, 77, 4], [4, 12, 76, 2], [4, 14, 72, 2],
+    [5, 0, 74, 3], [5, 4, 77, 3], [5, 8, 81, 4], [5, 12, 82, 2], [5, 14, 81, 2],
+    [6, 0, 79, 2], [6, 2, 81, 2], [6, 4, 82, 2], [6, 6, 84, 2],
+    [6, 8, 86, 4], [6, 12, 84, 2], [6, 14, 85, 2],
+    [7, 0, 78, 6], [7, 6, 81, 4], [7, 10, 86, 6]
+  ];
+  melody.forEach(([b, s, note, len], i) => {
+    const event = visuals.filter(v => v.kind === "lead").length;
+    lead(note, b * bar + s * step, len * step * 0.96, i >= 20 ? 0.102 : 0.085);
+    visuals[visuals.length - 1].index = event;
+  });
+
+  {
+    const when = 3 * bar;
+    const t = origin + when;
+    const source = ac.createBufferSource();
+    source.buffer = noiseBuffer;
+    const filter = ac.createBiquadFilter();
+    filter.type = "highpass";
+    filter.frequency.setValueAtTime(450, t);
+    filter.frequency.exponentialRampToValueAtTime(7200, t + bar);
+    const gain = ac.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.055, t + bar * 0.9);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + bar);
+    source.connect(filter);
+    filter.connect(gain);
+    route(gain, 0, 0.22);
+    source.start(t, 0, bar);
+  }
+
+  const stars = Array.from({ length: 115 }, () => ({
+    x: random() * 1080,
+    y: random() * 1350,
+    r: 0.35 + random() * 1.7,
+    phase: random() * Math.PI * 2,
+    depth: 0.3 + random() * 0.7
+  }));
+  const hues = [192, 244, 286, 24, 184, 249, 303, 43];
+
+  function energy(kind, t, life, decay = 5) {
+    let sum = 0;
+    for (const e of visuals) {
+      if (e.kind !== kind) continue;
+      const age = t - e.t;
+      if (age >= 0 && age < life) sum += Math.exp(-age * decay) * (e.velocity || 1);
+    }
+    return sum;
+  }
+
+  function color(h, s, l, a) {
+    return `hsla(${h},${s}%,${l}%,${a})`;
+  }
+
+  function draw(t) {
+    pen.setTransform(W / 1080, 0, 0, H / 1350, 0, 0);
+    pen.globalCompositeOperation = "source-over";
+    pen.globalAlpha = 1;
+    pen.shadowBlur = 0;
+
+    const currentBar = Math.min(7, Math.floor(t / bar));
+    const local = (t - currentBar * bar) / bar;
+    const hue = hues[currentBar] + (hues[Math.min(7, currentBar + 1)] - hues[currentBar]) * local * 0.18;
+    const kickPulse = clamp(energy("kick", t, 0.5, 7) * 1.5);
+    const snarePulse = clamp(energy("snare", t, 0.35, 11) * 2.5);
+    const bassPulse = clamp(energy("bass", t, 0.4, 6) * 2.4);
+    const tension = smooth(3 * bar, 4 * bar, t) * (1 - smooth(4 * bar, 4 * bar + 0.18, t));
+    const bloom = smooth(7 * bar, duration, t);
+    const reveal = 0.12 + 0.88 * smooth(0, 1.1, t);
+    const cx = 540;
+    const cy = 674;
+    const rotation = t * 0.038 + Math.sin(t * 0.38) * 0.045;
+
+    pen.fillStyle = "#05060d";
+    pen.fillRect(0, 0, 1080, 1350);
+    const background = pen.createRadialGradient(cx, cy, 15, cx, cy, 790);
+    background.addColorStop(0, color(hue, 62, 17 + kickPulse * 5, 0.94));
+    background.addColorStop(0.42, color(hue + 22, 54, 8 + tension * 4, 0.82));
+    background.addColorStop(1, "rgba(2,3,9,1)");
+    pen.fillStyle = background;
+    pen.fillRect(0, 0, 1080, 1350);
+
+    for (const star of stars) {
+      const twinkle = 0.18 + 0.4 * (0.5 + 0.5 * Math.sin(t * (0.7 + star.depth) + star.phase));
+      const dx = (star.x - cx) * bloom * 0.025 * star.depth;
+      const dy = (star.y - cy) * bloom * 0.025 * star.depth;
+      pen.fillStyle = color(hue + 30, 55, 84, twinkle * star.depth);
+      pen.beginPath();
+      pen.arc(star.x + dx, star.y + dy, star.r + bloom * star.depth, 0, Math.PI * 2);
+      pen.fill();
+    }
+
+    pen.globalCompositeOperation = "lighter";
+
+    for (const e of visuals) {
+      if (e.kind !== "kick") continue;
+      const age = t - e.t;
+      if (age < 0 || age > 0.72) continue;
+      const q = age / 0.72;
+      pen.strokeStyle = color(hue, 88, 67, (1 - q) * (1 - q) * 0.36);
+      pen.lineWidth = 2.5 - q;
+      pen.beginPath();
+      pen.arc(cx, cy, 60 + q * 510, 0, Math.PI * 2);
+      pen.stroke();
+    }
+
+    if (tension > 0) {
+      pen.strokeStyle = color(36, 100, 72, tension * 0.34);
+      pen.lineWidth = 1.5;
+      for (let i = 0; i < 5; i++) {
+        pen.beginPath();
+        pen.arc(cx, cy, 410 - tension * 75 - i * 14, 0, Math.PI * 2);
+        pen.stroke();
+      }
+    }
+
+    pen.save();
+    pen.translate(cx, cy);
+    pen.rotate(rotation);
+    pen.globalAlpha = reveal;
+
+    const outer = 367 + kickPulse * 8;
+    for (let i = 0; i < 34; i++) {
+      const a = i / 34 * Math.PI * 2;
+      const major = i % 8 === 0;
+      const length = major ? 26 : 9 + 5 * Math.sin(t * 2 + i);
+      const glow = 0.18 + (major ? 0.2 : 0) + snarePulse * 0.18;
+      pen.strokeStyle = color(hue + i * 1.3, 75, 69, glow);
+      pen.lineWidth = major ? 2 : 1;
+      pen.beginPath();
+      pen.moveTo(Math.cos(a) * (outer - length), Math.sin(a) * (outer - length));
+      pen.lineTo(Math.cos(a) * outer, Math.sin(a) * outer);
+      pen.stroke();
+      if (major) {
+        pen.fillStyle = color(hue, 90, 75, 0.58);
+        pen.beginPath();
+        pen.arc(Math.cos(a) * (outer + 9), Math.sin(a) * (outer + 9), 2.4, 0, Math.PI * 2);
+        pen.fill();
+      }
+    }
+
+    for (let ring = 0; ring < 4; ring++) {
+      const base = 125 + ring * 57;
+      pen.beginPath();
+      for (let j = 0; j <= 180; j++) {
+        const a = j / 180 * Math.PI * 2;
+        const r = base +
+          Math.sin(a * (5 + ring * 2) - t * (0.8 + ring * 0.18)) * (5 + ring * 2) +
+          Math.sin(a * 13 + t * 0.43) * (2 + tension * 8) +
+          bassPulse * Math.sin(a * 3) * 8;
+        const x = Math.cos(a) * r;
+        const y = Math.sin(a) * r;
+        if (!j) pen.moveTo(x, y);
+        else pen.lineTo(x, y);
+      }
+      pen.closePath();
+      pen.strokeStyle = color(hue + ring * 15, 83, 65, 0.19 + ring * 0.035);
+      pen.lineWidth = ring === 3 ? 1.8 : 1.1;
+      pen.stroke();
+    }
+
+    for (let i = 0; i < 13; i++) {
+      const a = i / 13 * Math.PI * 2 - Math.PI / 2;
+      const opening = 0.1 + bloom * 0.9 + kickPulse * 0.055;
+      const length = 112 + opening * 242;
+      const spread = 28 + opening * 60;
+      pen.save();
+      pen.rotate(a + bloom * 0.12);
+      const gradient = pen.createLinearGradient(0, 0, length, 0);
+      gradient.addColorStop(0, color(hue + 40, 90, 68, 0.05 + bloom * 0.15));
+      gradient.addColorStop(0.68, color(hue + i * 3, 87, 60, 0.045 + bloom * 0.1));
+      gradient.addColorStop(1, color(hue + i * 4, 95, 72, 0));
+      pen.fillStyle = gradient;
+      pen.strokeStyle = color(hue + i * 3, 85, 70, 0.2 + bloom * 0.35);
+      pen.lineWidth = 1.2;
+      pen.beginPath();
+      pen.moveTo(27, 0);
+      pen.bezierCurveTo(length * 0.35, -spread, length * 0.8, -spread * 0.68, length, 0);
+      pen.bezierCurveTo(length * 0.8, spread * 0.68, length * 0.35, spread, 27, 0);
+      pen.fill();
+      pen.stroke();
+      pen.restore();
+    }
+    pen.restore();
+
+    for (const e of visuals) {
+      if (e.kind !== "pluck") continue;
+      const age = t - e.t;
+      if (age < 0 || age > 0.46) continue;
+      const q = age / 0.46;
+      const index = Math.round(e.t / step);
+      const a = index * 2.399963 + rotation;
+      const r = 330 + q * 105;
+      const x = cx + Math.cos(a) * r;
+      const y = cy + Math.sin(a) * r;
+      pen.save();
+      pen.translate(x, y);
+      pen.rotate(a + Math.PI / 2);
+      pen.strokeStyle = color(hue + 34, 100, 74, (1 - q) * 0.76);
+      pen.lineWidth = 1.4;
+      pen.beginPath();
+      pen.moveTo(-7 - e.velocity * 70, 0);
+      pen.lineTo(7 + e.velocity * 70, 0);
+      pen.stroke();
+      pen.restore();
+    }
+
+    const leads = visuals.filter(e => e.kind === "lead");
+    function leadPosition(e) {
+      const a = -Math.PI / 2 + e.index * 2.399963 + rotation * 1.7;
+      const r = clamp(96 + (e.note - 72) * 10, 85, 285);
+      return [cx + Math.cos(a) * r, cy + Math.sin(a) * r];
+    }
+    for (let i = 0; i < leads.length; i++) {
+      const e = leads[i];
+      const age = t - e.t;
+      if (age < 0 || age > e.length + 0.8) continue;
+      const [x, y] = leadPosition(e);
+      if (i > 0 && t - leads[i - 1].t < 1.6) {
+        const [px, py] = leadPosition(leads[i - 1]);
+        pen.strokeStyle = color(hue + 35, 100, 73, clamp(1 - age / 1.6) * 0.4);
+        pen.lineWidth = 2;
+        pen.beginPath();
+        pen.moveTo(px, py);
+        const mx = (px + x) / 2 + (y - py) * 0.14;
+        const my = (py + y) / 2 - (x - px) * 0.14;
+        pen.quadraticCurveTo(mx, my, x, y);
+        pen.stroke();
+      }
+      const glow = Math.exp(-age * 4);
+      pen.shadowColor = color(hue + 30, 100, 72, 0.9);
+      pen.shadowBlur = 18 * glow;
+      pen.fillStyle = color(hue + 35, 100, 83, clamp(1 - age / (e.length + 0.8)) * 0.92);
+      pen.beginPath();
+      pen.arc(x, y, 2.5 + glow * 6, 0, Math.PI * 2);
+      pen.fill();
+      pen.shadowBlur = 0;
+    }
+
+    for (const e of visuals) {
+      if (e.kind !== "snare") continue;
+      const age = t - e.t;
+      if (age < 0 || age > 0.24) continue;
+      const q = age / 0.24;
+      pen.save();
+      pen.translate(cx, cy);
+      pen.rotate(e.angle + q * 0.15);
+      pen.strokeStyle = color(42, 100, 82, (1 - q) * 0.32);
+      pen.lineWidth = 1;
+      for (let i = 0; i < 12; i++) {
+        pen.rotate(Math.PI / 6);
+        pen.beginPath();
+        pen.moveTo(250 + q * 60, 0);
+        pen.lineTo(340 + q * 115, 0);
+        pen.stroke();
+      }
+      pen.restore();
+    }
+
+    const coreRadius = 32 + bassPulse * 12 + bloom * 22;
+    const core = pen.createRadialGradient(cx - 10, cy - 12, 2, cx, cy, coreRadius * 1.8);
+    core.addColorStop(0, color(48 + bloom * 5, 100, 96, 0.98));
+    core.addColorStop(0.25, color(hue + 24, 100, 71, 0.85));
+    core.addColorStop(0.58, color(hue, 90, 46, 0.26));
+    core.addColorStop(1, color(hue, 90, 35, 0));
+    pen.shadowColor = color(hue + 25, 100, 70, 0.8);
+    pen.shadowBlur = 38 + bloom * 42;
+    pen.fillStyle = core;
+    pen.beginPath();
+    pen.arc(cx, cy, coreRadius * 1.8, 0, Math.PI * 2);
+    pen.fill();
+    pen.shadowBlur = 0;
+
+    pen.globalCompositeOperation = "source-over";
+    pen.globalAlpha = 1;
+    const vignette = pen.createRadialGradient(cx, cy, 470, cx, cy, 850);
+    vignette.addColorStop(0, "rgba(0,0,0,0)");
+    vignette.addColorStop(1, "rgba(0,0,0,0.66)");
+    pen.fillStyle = vignette;
+    pen.fillRect(0, 0, 1080, 1350);
+  }
+
+  draw(0);
+  let frameId;
+  function frame() {
+    const t = clamp(ac.currentTime - origin, 0, duration);
+    draw(t);
+    if (ac.currentTime - origin < duration) frameId = requestAnimationFrame(frame);
+  }
+  frameId = requestAnimationFrame(frame);
+
+  return () => cancelAnimationFrame(frameId);
+}
