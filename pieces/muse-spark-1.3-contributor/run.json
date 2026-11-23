@@ -1,0 +1,58 @@
+{
+  "wallSeconds": {
+    "value": 70.889091625,
+    "source": "tool-result"
+  },
+  "toolReportedDurationSeconds": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "inputTokens": {
+    "value": 7850,
+    "source": "tool-result"
+  },
+  "outputTokens": {
+    "value": 7991,
+    "source": "tool-result"
+  },
+  "reasoningTokens": {
+    "value": 4100,
+    "source": "tool-result"
+  },
+  "cachedReadTokens": {
+    "value": 113,
+    "source": "tool-result"
+  },
+  "cachedWriteTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "reportedCostUsd": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "reportedModelId": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "requestedModelId": {
+    "value": "muse-spark-1.3-contributor",
+    "source": "tool-result"
+  },
+  "tool": {
+    "value": "opencode",
+    "source": "tool-result"
+  },
+  "toolVersion": {
+    "value": "opencode v2.4.0",
+    "source": "tool-result"
+  },
+  "effort": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "effortSetting": {
+    "value": "high",
+    "source": "tool-result"
+  }
+}
