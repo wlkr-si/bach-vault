@@ -289,7 +289,14 @@
     "pieces/mimo-v2.6-pro/reply.txt": "6ef5071b1b6271bb45b3c8e0f51bcd72749aff57aa056b3f5d70498e9aede202",
     "pieces/mimo-v2.6-pro/run.json": "8d8092040c7ca1e12e8c9c88161933365e412b5451ead9d98ccc11c36a39ac83",
     "pieces/mimo-v2.6-pro/signals.json": "0cc990249c8bd794c2034aafae458e4c856b2761b9f2f73b2b6416671e791af8",
-    "pieces/mimo-v2.6-pro/timeline.json": "0bfb89adee07cfa66bfba1b8e1a62f39c135dab5fcf56854b6a80aea3cc0098b"
+    "pieces/mimo-v2.6-pro/timeline.json": "0bfb89adee07cfa66bfba1b8e1a62f39c135dab5fcf56854b6a80aea3cc0098b",
+    "pieces/longcat-2.5/analysis.json": "14a0a80581850b293d08497a5615368dedd5860bb6c0980d500e45b13892fde4",
+    "pieces/longcat-2.5/meta.json": "3a992cf1f70d529bb085c4bb932c85f9ed50ac77f39eaeb50bb68139f345a1ad",
+    "pieces/longcat-2.5/piece.js": "cc2e5f96b5ff645eb6b73257c58942eb4953b45cc4705ff450d3baba261523fa",
+    "pieces/longcat-2.5/reply.txt": "afaa46dd60abbf3da1519c6128aa933dca4122c261d74f2a813b9bbfe7b7f598",
+    "pieces/longcat-2.5/run.json": "29e0007382282e04de3af7484b7702349b678221624fb88a3183c3b0586a63b9",
+    "pieces/longcat-2.5/signals.json": "0fa8fc1f91d997c2ee849baba9f9bfcca8e26f4df31ccec47958774d5eb6c638",
+    "pieces/longcat-2.5/timeline.json": "d4a45cff5de4dfc41f6ea93d102ec1ef33fe92a04285422b03c3157de9c4cfe9"
   },
   "media": {
     "pieces/claude-fable-5-2/clip.mp4": {
@@ -851,6 +858,18 @@
     "pieces/mimo-v2.6-pro/poster.jpg": {
       "sha256": "8079e1f02e416044c6b7cf6f83ab9266fd5e0b99aa74c0d771bb49b023231eda",
       "size": 40086,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable"
+    },
+    "pieces/longcat-2.5/clip.mp4": {
+      "sha256": "1e1052eeb753264ab06339b7c3983e7f4c3ce114d51340108857dc4defcfa97f",
+      "size": 8014731,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable"
+    },
+    "pieces/longcat-2.5/poster.jpg": {
+      "sha256": "1bec2ff315117225989e8e4db1a17788cd889e46d11acedcf4b2a094653f57f1",
+      "size": 41313,
       "contentType": "image/jpeg",
       "cacheControl": "public, max-age=31536000, immutable"
     }
