@@ -1,0 +1,396 @@
+```javascript
+// Aurora Mechanism — a 15-second generative audio-visual piece
+export const title = 'Aurora Mechanism';
+
+export function start({ audioContext, canvas, duration, random }) {
+  const w = canvas.width;
+  const h = canvas.height;
+  const ctx = canvas.getContext('2d');
+
+  const now = audioContext.currentTime;
+  const end = now + duration;
+  const bpm = 120;
+  const beat = 60 / bpm;
+  const sixteenth = beat / 4;
+
+  // Master chain
+  const masterGain = audioContext.createGain();
+  masterGain.gain.setValueAtTime(0.34, now);
+  masterGain.gain.setValueAtTime(0.34, now + duration - 0.6);
+  masterGain.gain.exponentialRampToValueAtTime(0.0001, end);
+
+  const comp = audioContext.createDynamicsCompressor();
+  comp.threshold.value = -14;
+  comp.knee.value = 8;
+  comp.ratio.value = 5;
+  comp.attack.value = 0.003;
+  comp.release.value = 0.12;
+
+  const analyser = audioContext.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0.78;
+
+  masterGain.connect(comp);
+  comp.connect(analyser);
+  analyser.connect(audioContext.destination);
+
+  // Reverb + feedback delay bus
+  const reverbBus = audioContext.createGain();
+  reverbBus.gain.value = 0.22;
+
+  const convolver = audioContext.createConvolver();
+  convolver.normalize = false;
+  const impulseLen = Math.floor(audioContext.sampleRate * 2.2);
+  const impulse = audioContext.createBuffer(2, impulseLen, audioContext.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const ch = impulse.getChannelData(c);
+    for (let i = 0; i < impulseLen; i++) {
+      ch[i] = (random() * 2 - 1) * Math.pow(1 - i / impulseLen, 3);
+    }
+  }
+  convolver.buffer = impulse;
+
+  const delay = audioContext.createDelay(1.0);
+  delay.delayTime.value = 0.375;
+  const delayFilter = audioContext.createBiquadFilter();
+  delayFilter.type = 'lowpass';
+  delayFilter.frequency.value = 2200;
+  const feedback = audioContext.createGain();
+  feedback.gain.value = 0.28;
+
+  const wetGain = audioContext.createGain();
+  wetGain.gain.value = 0.35;
+
+  reverbBus.connect(convolver);
+  convolver.connect(wetGain);
+  convolver.connect(delay);
+  delay.connect(delayFilter);
+  delayFilter.connect(feedback);
+  feedback.connect(delay);
+  delayFilter.connect(wetGain);
+  wetGain.connect(comp);
+
+  const hasPanner = typeof audioContext.createStereoPanner === 'function';
+
+  function routeOutput(gainNode, pan, send) {
+    if (hasPanner) {
+      const panner = audioContext.createStereoPanner();
+      panner.pan.value = pan;
+      gainNode.connect(panner);
+      panner.connect(masterGain);
+      if (send) panner.connect(reverbBus);
+    } else {
+      gainNode.connect(masterGain);
+      if (send) gainNode.connect(reverbBus);
+    }
+  }
+
+  function playTone({ freq, type = 'sine', detune = 0, start, dur, attack = 0.01, decay = 0.1, sustain = 0.5, release = 0.1, vol = 0.2, pan = 0, send = true }) {
+    const osc = audioContext.createOscillator();
+    osc.type = type;
+    osc.frequency.value = freq;
+    if (detune) osc.detune.value = detune;
+
+    const env = audioContext.createGain();
+    const peak = vol;
+    const sus = Math.max(0.0001, peak * sustain);
+    const t0 = start;
+    const t1 = t0 + attack;
+    const t2 = t0 + attack + decay;
+    const t3 = t0 + dur;
+    const t4 = t3 + release;
+
+    env.gain.setValueAtTime(0.0001, t0);
+    env.gain.exponentialRampToValueAtTime(Math.max(0.0001, peak), t1);
+    env.gain.exponentialRampToValueAtTime(sus, t2);
+    env.gain.setValueAtTime(sus, t3);
+    env.gain.exponentialRampToValueAtTime(0.0001, t4);
+
+    osc.connect(env);
+    routeOutput(env, pan, send);
+    osc.start(t0);
+    osc.stop(t4 + 0.02);
+  }
+
+  // Percussion noise source
+  const percNoise = audioContext.createBuffer(1, audioContext.sampleRate, audioContext.sampleRate);
+  const pnData = percNoise.getChannelData(0);
+  for (let i = 0; i < pnData.length; i++) pnData[i] = random() * 2 - 1;
+
+  function playKick(start, vel = 1) {
+    const osc = audioContext.createOscillator();
+    osc.frequency.setValueAtTime(150, start);
+    osc.frequency.exponentialRampToValueAtTime(42, start + 0.12);
+    const env = audioContext.createGain();
+    env.gain.setValueAtTime(0.0001, start);
+    env.gain.exponentialRampToValueAtTime(0.92 * vel, start + 0.005);
+    env.gain.exponentialRampToValueAtTime(0.0001, start + 0.38);
+    osc.connect(env);
+    routeOutput(env, 0, true);
+    osc.start(start);
+    osc.stop(start + 0.4);
+
+    const src = audioContext.createBufferSource();
+    src.buffer = percNoise;
+    const offset = random() * (percNoise.duration - 0.05);
+    const hp = audioContext.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 2500;
+    const cenv = audioContext.createGain();
+    cenv.gain.setValueAtTime(0.0001, start);
+    cenv.gain.exponentialRampToValueAtTime(0.26 * vel, start + 0.001);
+    cenv.gain.exponentialRampToValueAtTime(0.0001, start + 0.03);
+    src.connect(hp);
+    hp.connect(cenv);
+    routeOutput(cenv, 0, false);
+    src.start(start, offset);
+    src.stop(start + 0.04);
+  }
+
+  function playSnare(start, vel = 1) {
+    const src = audioContext.createBufferSource();
+    src.buffer = percNoise;
+    const offset = random() * (percNoise.duration - 0.2);
+    const bp = audioContext.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 1700;
+    bp.Q.value = 1.1;
+    const env = audioContext.createGain();
+    env.gain.setValueAtTime(0.0001, start);
+    env.gain.exponentialRampToValueAtTime(0.58 * vel, start + 0.003);
+    env.gain.exponentialRampToValueAtTime(0.0001, start + 0.22);
+    src.connect(bp);
+    bp.connect(env);
+    routeOutput(env, 0, true);
+    src.start(start, offset);
+    src.stop(start + 0.25);
+
+    const osc = audioContext.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = 185;
+    const benv = audioContext.createGain();
+    benv.gain.setValueAtTime(0.0001, start);
+    benv.gain.exponentialRampToValueAtTime(0.18 * vel, start + 0.005);
+    benv.gain.exponentialRampToValueAtTime(0.0001, start + 0.11);
+    osc.connect(benv);
+    routeOutput(benv, 0, true);
+    osc.start(start);
+    osc.stop(start + 0.13);
+  }
+
+  function playHat(start, open = false, vel = 1) {
+    const src = audioContext.createBufferSource();
+    src.buffer = percNoise;
+    const offset = random() * (percNoise.duration - 0.2);
+    const hp = audioContext.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 6500;
+    const env = audioContext.createGain();
+    const dec = open ? 0.14 : 0.045;
+    env.gain.setValueAtTime(0.0001, start);
+    env.gain.exponentialRampToValueAtTime(0.2 * vel, start + 0.002);
+    env.gain.exponentialRampToValueAtTime(0.0001, start + dec);
+    src.connect(hp);
+    hp.connect(env);
+    routeOutput(env, random() * 0.6 - 0.3, true);
+    src.start(start, offset);
+    src.stop(start + dec + 0.02);
+  }
+
+  // Harmony: Cm → Ab → Fm → G → Cm
+  const chords = [
+    { root: 65.41, pad: [130.81, 196.0, 311.13], arp: [261.63, 311.13, 392.0, 523.25, 622.25, 783.99, 932.33] },
+    { root: 51.91, pad: [103.83, 155.56, 261.63], arp: [207.65, 261.63, 311.13, 415.3, 523.25, 622.25, 783.99] },
+    { root: 87.31, pad: [174.61, 261.63, 415.3], arp: [174.61, 207.65, 261.63, 349.23, 415.3, 523.25, 622.25] },
+    { root: 98.0, pad: [196.0, 293.66, 493.88], arp: [196.0, 233.08, 293.66, 392.0, 493.88, 587.33, 739.99] }
+  ];
+  const progression = [0, 1, 2, 3, 0];
+
+  function playPad(freqs, start, dur) {
+    freqs.forEach((f, i) => {
+      const pan = (i - (freqs.length - 1) / 2) * 0.55;
+      playTone({ freq: f, type: 'triangle', detune: -8, start, dur, attack: 1.0, decay: 0.8, sustain: 0.65, release: 2.5, vol: 0.045, pan, send: true });
+      playTone({ freq: f, type: 'triangle', detune: 8, start, dur: dur + 0.15, attack: 1.1, decay: 0.9, sustain: 0.6, release: 2.7, vol: 0.04, pan, send: true });
+    });
+  }
+
+  function playBass(f, start, dur) {
+    playTone({ freq: f, type: 'sine', start, dur, attack: 0.7, decay: 0.2, sustain: 0.85, release: 1.5, vol: 0.3, pan: 0, send: false });
+    playTone({ freq: f * 2, type: 'triangle', start, dur, attack: 0.6, decay: 0.3, sustain: 0.5, release: 1.2, vol: 0.06, pan: 0, send: true });
+  }
+
+  function playArp(f, start, vel) {
+    const vol = 0.09 * vel;
+    const pan = random() * 2 - 1;
+    playTone({ freq: f, type: 'triangle', start, dur: 0.11, attack: 0.004, decay: 0.07, sustain: 0.08, release: 0.06, vol, pan, send: true });
+  }
+
+  function playSparkle(start) {
+    const f = 880 + random() * 1600;
+    const pan = random() * 2 - 1;
+    playTone({ freq: f, type: 'sine', start, dur: 0.06, attack: 0.002, decay: 0.045, sustain: 0.05, release: 0.05, vol: 0.09, pan, send: true });
+  }
+
+  // Schedule harmony
+  for (let i = 0; i < progression.length; i++) {
+    const cs = now + i * 3;
+    if (cs >= end) break;
+    const dur = Math.min(3, end - cs);
+    const chord = chords[progression[i]];
+    playPad(chord.pad, cs, dur);
+    playBass(chord.root, cs, dur);
+  }
+
+  // Schedule drums
+  let beatIdx = 0;
+  for (let t = now; t < end; t += beat) {
+    const pos = beatIdx % 4;
+    const v = 0.8 + random() * 0.2;
+    playKick(t, v);
+    if (pos === 1 || pos === 3) playSnare(t, 0.7 + random() * 0.25);
+    beatIdx++;
+  }
+  for (let t = now + beat * 0.5; t < end; t += beat * 0.5) {
+    const open = random() < 0.12;
+    playHat(t, open, 0.5 + random() * 0.35);
+  }
+
+  // Schedule arpeggios and sparkles
+  for (let t = now; t < end; t += sixteenth) {
+    const cIdx = Math.min(Math.floor((t - now) / 3), 4);
+    const chord = chords[progression[cIdx]];
+    if (random() < 0.62) {
+      const f = chord.arp[Math.floor(random() * chord.arp.length)];
+      playArp(f, t + random() * 0.008, 0.45 + random() * 0.55);
+    }
+    if (random() < 0.12) playSparkle(t + random() * 0.008);
+  }
+
+  // Visuals
+  const analyserData = new Uint8Array(analyser.frequencyBinCount);
+
+  function avgEnergy(startBin, endBin) {
+    let sum = 0;
+    for (let i = startBin; i < endBin; i++) sum += analyserData[i];
+    return sum / ((endBin - startBin) * 255);
+  }
+
+  const ribbons = [];
+  for (let i = 0; i < 5; i++) {
+    ribbons.push({
+      phase: random() * Math.PI * 2,
+      freq: 0.003 + random() * 0.004,
+      speed: 0.3 + random() * 0.5,
+      amp: 60 + random() * 80,
+      hue: random() * 60
+    });
+  }
+
+  const particles = [];
+  for (let i = 0; i < 160; i++) {
+    particles.push({
+      x: random() * w,
+      y: random() * h,
+      size: random() * 2.5 + 0.5,
+      speed: random() * 0.8 + 0.2,
+      hue: random() * 80,
+      phase: random() * Math.PI * 2
+    });
+  }
+
+  const startVisual = performance.now();
+  let raf;
+
+  function draw(t, low, mid, high) {
+    const baseHue = (t * 18 + low * 50) % 360;
+
+    const bg = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.7);
+    bg.addColorStop(0, `hsl(${baseHue}, 55%, ${6 + low * 18}%)`);
+    bg.addColorStop(0.6, `hsl(${(baseHue + 30) % 360}, 45%, ${3 + mid * 8}%)`);
+    bg.addColorStop(1, `hsl(${(baseHue + 60) % 360}, 40%, 2%)`);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    for (let i = 0; i < ribbons.length; i++) {
+      const r = ribbons[i];
+      ctx.beginPath();
+      const amp = r.amp * (0.6 + low * 0.8);
+      for (let y = 0; y <= h; y += 14) {
+        const x = w / 2 + Math.sin(y * r.freq + r.phase + t * r.speed) * amp + Math.cos(y * 0.015 - t * 0.7) * mid * 80;
+        if (y === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = `hsla(${(baseHue + r.hue) % 360}, 95%, 65%, ${0.22 + mid * 0.3})`;
+      ctx.lineWidth = 2 + low * 5;
+      ctx.shadowBlur = 18 + high * 25;
+      ctx.shadowColor = `hsla(${(baseHue + r.hue) % 360}, 95%, 60%, 0.8)`;
+      ctx.stroke();
+    }
+
+    ctx.save();
+    ctx.translate(w / 2, h / 2);
+    ctx.rotate(t * 0.25 + low * 0.4);
+    const sides = 6;
+    const radius = 170 + low * 90 + Math.sin(t * 3) * 12;
+    ctx.beginPath();
+    for (let i = 0; i < sides * 2; i++) {
+      const a = i * Math.PI / sides - Math.PI / 2;
+      const rad = (i % 2 === 0 ? radius : radius * 0.55) + (i % 3 === 0 ? mid * 50 : 0);
+      ctx.lineTo(Math.cos(a) * rad, Math.sin(a) * rad);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = `hsla(${baseHue}, 100%, 80%, ${0.55 + high * 0.45})`;
+    ctx.lineWidth = 3 + low * 3;
+    ctx.shadowBlur = 50 + low * 60;
+    ctx.shadowColor = `hsla(${baseHue}, 100%, 70%, 0.9)`;
+    ctx.stroke();
+
+    ctx.beginPath();
+    for (let i = 0; i < sides; i++) {
+      const a = i * 2 * Math.PI / sides - Math.PI / 2;
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a) * radius * 0.9, Math.sin(a) * radius * 0.9);
+    }
+    ctx.strokeStyle = `hsla(${baseHue}, 90%, 70%, ${0.3 + mid * 0.4})`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      const size = p.size * (1 + high * 5);
+      const alpha = 0.35 + high * 0.65;
+      ctx.fillStyle = `hsla(${(baseHue + p.hue) % 360}, 85%, 70%, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+      ctx.fill();
+      p.y -= p.speed * (1 + mid * 6);
+      p.x += Math.sin(t * 2 + p.phase) * (0.4 + high * 2);
+      if (p.y < -10) p.y = h + 10;
+      if (p.x < -10) p.x = w + 10;
+      if (p.x > w + 10) p.x = -10;
+    }
+
+    ctx.shadowBlur = 0;
+  }
+
+  function frame() {
+    const elapsed = (performance.now() - startVisual) / 1000;
+    if (elapsed >= duration) {
+      cancelAnimationFrame(raf);
+      return;
+    }
+    analyser.getByteFrequencyData(analyserData);
+    const low = avgEnergy(0, 5);
+    const mid = avgEnergy(5, 50);
+    const high = avgEnergy(50, Math.floor(analyserData.length / 2));
+    draw(elapsed, low, mid, high);
+    raf = requestAnimationFrame(frame);
+  }
+
+  raf = requestAnimationFrame(frame);
+}
+```
