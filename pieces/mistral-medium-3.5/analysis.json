@@ -1,0 +1,19 @@
+{
+  "replyCharacters": 7013,
+  "moduleLines": 136,
+  "moduleCharacters": 5077,
+  "drawingMethods": [
+    "2D canvas"
+  ],
+  "audioNodeCallSites": {
+    "Oscillator": 1,
+    "Gain": 1
+  },
+  "integratedLoudnessLufs": -7.2,
+  "truePeakDbfs": -3.5,
+  "silentFraction": 0,
+  "recordedVideoFrames": 450,
+  "distinctVideoFrames": 450,
+  "channelRange": 0,
+  "clipSeconds": 15.02
+}
