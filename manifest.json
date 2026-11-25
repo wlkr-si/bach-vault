@@ -324,7 +324,14 @@
     "pieces/hy4-flash/reply.txt": "c0cf8aae0777583370a4af80f6985fff590ca23066442e8d476b3820f2631c3e",
     "pieces/hy4-flash/run.json": "190c937ea056973d7bc2e060126fad12096fc3b4cc3fd2a8c9384e57fbded4f8",
     "pieces/hy4-flash/signals.json": "724c0fd7653ee7cca5c939411f364baa8c6d7f7e0db135beb2eada8e8ba5dd85",
-    "pieces/hy4-flash/timeline.json": "2cfae62c8d1a653e02842bd870c57926a68a0bce51775512b9fbeae7b7570638"
+    "pieces/hy4-flash/timeline.json": "2cfae62c8d1a653e02842bd870c57926a68a0bce51775512b9fbeae7b7570638",
+    "pieces/minimax-m3.1-flash/analysis.json": "b4f9afd42f4875b855953f8723482c50e3ec5e35581a09bee6b4cd6d87869f56",
+    "pieces/minimax-m3.1-flash/meta.json": "68b96b58e6608e22d49dd9eae72a36556c1fcfb12c488ac481e1133543bd072a",
+    "pieces/minimax-m3.1-flash/piece.js": "17851f7d900ffdd89fdcedb12f6694c5280f30473b75747705ca03b3dbce684e",
+    "pieces/minimax-m3.1-flash/reply.txt": "5a4445dfed4ee99759665dcbf9680238b3a40abac10b1a3f3c396c9894613e9a",
+    "pieces/minimax-m3.1-flash/run.json": "79c0263df5c8c2228467afa36f3280904a144a6fc8e05a9dc529171bdb4919bd",
+    "pieces/minimax-m3.1-flash/signals.json": "4948eb805a417ecb26c1a477aa73b1c94258cf7c37e930b459f3bfdd3a3d72c4",
+    "pieces/minimax-m3.1-flash/timeline.json": "3aea337e318b5518ce93f3ee827e005eabaff232d5ab001492a9c370f7d598fd"
   },
   "media": {
     "pieces/claude-fable-5-2/clip.mp4": {
@@ -946,6 +953,18 @@
     "pieces/hy4-flash/poster.jpg": {
       "sha256": "1ceac9aec7f3cf175e28dd25748c90b72d76bf609db9589ea759f277102ec26e",
       "size": 21901,
+      "contentType": "image/jpeg",
+      "cacheControl": "public, max-age=31536000, immutable"
+    },
+    "pieces/minimax-m3.1-flash/clip.mp4": {
+      "sha256": "686db29fe211a891b2105254ad7eaa14bc8dafc4182d4be88af57d616927f856",
+      "size": 4656095,
+      "contentType": "video/mp4",
+      "cacheControl": "public, max-age=31536000, immutable"
+    },
+    "pieces/minimax-m3.1-flash/poster.jpg": {
+      "sha256": "c5069eeb9c43e1428250466f8a7c9fe4010bd6a3b9b022610123c1ea1706b229",
+      "size": 54472,
       "contentType": "image/jpeg",
       "cacheControl": "public, max-age=31536000, immutable"
     }
