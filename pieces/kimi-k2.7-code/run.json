@@ -1,0 +1,58 @@
+{
+  "wallSeconds": {
+    "value": 436.451002667,
+    "source": "tool-result"
+  },
+  "toolReportedDurationSeconds": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "inputTokens": {
+    "value": 180,
+    "source": "tool-result"
+  },
+  "outputTokens": {
+    "value": 4740,
+    "source": "tool-result"
+  },
+  "reasoningTokens": {
+    "value": 23894,
+    "source": "tool-result"
+  },
+  "cachedReadTokens": {
+    "value": 7680,
+    "source": "tool-result"
+  },
+  "cachedWriteTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "reportedCostUsd": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "reportedModelId": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "requestedModelId": {
+    "value": "kimi-k2.7-code",
+    "source": "tool-result"
+  },
+  "tool": {
+    "value": "opencode",
+    "source": "tool-result"
+  },
+  "toolVersion": {
+    "value": "opencode v2.4.1",
+    "source": "tool-result"
+  },
+  "effort": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "effortSetting": {
+    "value": "kimi-k2.7-code (model default; no high variant)",
+    "source": "tool-result"
+  }
+}
