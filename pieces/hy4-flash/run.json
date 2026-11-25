@@ -1,0 +1,58 @@
+{
+  "wallSeconds": {
+    "value": 121.61518987500001,
+    "source": "tool-result"
+  },
+  "toolReportedDurationSeconds": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "inputTokens": {
+    "value": 6549,
+    "source": "tool-result"
+  },
+  "outputTokens": {
+    "value": 6196,
+    "source": "tool-result"
+  },
+  "reasoningTokens": {
+    "value": 19441,
+    "source": "tool-result"
+  },
+  "cachedReadTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "cachedWriteTokens": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "reportedCostUsd": {
+    "value": 0,
+    "source": "tool-result"
+  },
+  "reportedModelId": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "requestedModelId": {
+    "value": "hy4-flash-free",
+    "source": "tool-result"
+  },
+  "tool": {
+    "value": "opencode",
+    "source": "tool-result"
+  },
+  "toolVersion": {
+    "value": "opencode v2.4.1",
+    "source": "tool-result"
+  },
+  "effort": {
+    "value": null,
+    "source": "tool-result"
+  },
+  "effortSetting": {
+    "value": "high",
+    "source": "tool-result"
+  }
+}
